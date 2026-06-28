@@ -724,9 +724,12 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.0';
     if (window.electronAPI) {
-        document.getElementById('watermarkVersion').textContent = `v3.27 (Desktop)`;
-        document.getElementById('versionDisplay').textContent = `v3.27 (Desktop)`;
+        const watermarkVer = document.getElementById('watermarkVersion');
+        if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
+        const verDisp = document.getElementById('versionDisplay');
+        if (verDisp) verDisp.textContent = `v${versionStr} (Desktop)`;
         
         // Bind custom window controls
         const winMin = document.getElementById('winMin');
@@ -739,8 +742,10 @@ async function initializeApp() {
         
         config = await window.electronAPI.loadConfig() || {};
     } else {
-        document.getElementById('watermarkVersion').textContent = `v3.27`;
-        document.getElementById('versionDisplay').textContent = `v3.27`;
+        const watermarkVer = document.getElementById('watermarkVersion');
+        if (watermarkVer) watermarkVer.textContent = `v${versionStr}`;
+        const verDisp = document.getElementById('versionDisplay');
+        if (verDisp) verDisp.textContent = `v${versionStr}`;
         const winMin = document.getElementById('winMin');
         const winMax = document.getElementById('winMax');
         const winClose = document.getElementById('winClose');
