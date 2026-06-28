@@ -1,0 +1,1014 @@
+// --- APP INITIALIZATION, NAVIGATION, FILE SELECTION & MAIN THREAD RUNNERS ---
+
+// --- DOM Elements ---
+const fileInput = document.getElementById('fileInput');
+const fileDropArea = document.getElementById('fileDropArea');
+const browseButton = document.getElementById('browseButton');
+const transformButton = document.getElementById('transformButton');
+const downloadExcelButton = document.getElementById('downloadExcelButton'); 
+const pdfSigfaButton = document.getElementById('pdfSigfaButton');
+const pdfWorkingButton = document.getElementById('pdfWorkingButton');
+const pdfDeduplicatedButton = document.getElementById('pdfDeduplicatedButton');
+const resetButton = document.getElementById('resetButton');
+const fileNameDisplay = document.getElementById('fileName');
+const messageContainer = document.getElementById('messageContainer');
+const simpleMessage = document.getElementById('simpleMessage');
+const messageText = document.getElementById('messageText');
+const showErrorLink = document.getElementById('showErrorLink');
+const detailedError = document.getElementById('detailedError');
+const processingContainer = document.getElementById('processingContainer');
+const progressBar = document.getElementById('progressBar');
+const processingStatus = document.getElementById('processingStatus');
+const uploadContainer = document.getElementById('fileDropArea'); // Maps to the process mode container
+const downloadContainer = document.getElementById('downloadContainer');
+
+// Main Navigation Elements
+const mainTabProcess = document.getElementById('mainTabProcess');
+const mainTabInsights = document.getElementById('mainTabInsights');
+const mainTabSettings = document.getElementById('mainTabSettings');
+const viewProcessContainer = document.getElementById('viewProcessContainer');
+const viewInsightsContainer = document.getElementById('viewInsightsContainer');
+const viewSettingsContainer = document.getElementById('viewSettingsContainer');
+
+// Control Elements
+const themeToggle = document.getElementById('themeToggle');
+const themeToggleSwitch = document.getElementById('themeToggleSwitch');
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+const sidebar = document.getElementById('sidebar');
+const themeIconLight = document.getElementById('themeIconLight');
+const themeIconDark = document.getElementById('themeIconDark');
+const htmlElement = document.documentElement;
+const toastContainer = document.getElementById('toastContainer');
+
+// Settings Deduplication Selectors
+const settingsExclusions = document.getElementById('settingsExclusions');
+const settingsSpecialParties = document.getElementById('settingsSpecialParties');
+const settingsMarkaParties = document.getElementById('settingsMarkaParties');
+const settingsFullyExcluded = document.getElementById('settingsFullyExcluded');
+const saveRulesButton = document.getElementById('saveRulesButton');
+const exportRulesBtn = document.getElementById('exportRulesBtn');
+const importRulesBtn = document.getElementById('importRulesBtn');
+const importRulesInput = document.getElementById('importRulesInput');
+
+const partySearch = document.getElementById('partySearch');
+const partyRulesList = document.getElementById('partyRulesList');
+const spellingMergeCard = document.getElementById('spellingMergeCard');
+const spellingMergeList = document.getElementById('spellingMergeList');
+
+// Dashboard Elements
+const dashboardContainer = document.getElementById('dashboardContainer');
+const dashTotalValueDisplay = document.getElementById('dashTotalValueDisplay');
+const dashTotalQtyDisplay = document.getElementById('dashTotalQtyDisplay');
+const dashUniqueItemsDisplay = document.getElementById('dashUniqueItemsDisplay');
+const dashUniquePartiesDisplay = document.getElementById('dashUniquePartiesDisplay');
+
+// Filter Elements
+const searchInput = document.getElementById('searchInput');
+const filterAll = document.getElementById('filterAll');
+const filterDel = document.getElementById('filterDel');
+const filterApr = document.getElementById('filterApr');
+const dataTableBody = document.getElementById('dataTableBody');
+const tableEmptyState = document.getElementById('tableEmptyState');
+
+let chartPartiesInstance = null;
+let chartItemsInstance = null;
+let chartTrendInstance = null;
+let chartDistributionInstance = null;
+let chartAgingInstance = null; 
+
+// Data Variables
+let originalJsonData = null;
+let transformedData = null;
+let finalDeduplicatedData = null; // Source of truth
+let currentFilteredData = null;   // Active view
+let uniquePartiesList = [];       // Unique parties list from active file
+
+let originalFileName = '';
+let processedWbout = null;
+
+let animationFrameId = null;
+let originalExcelButtonHTML = '';
+let currentFilterType = 'ALL'; 
+
+// Deduplication Rules Arrays (Loaded from config.json or localStorage)
+let excludedParties = [];           // "Keep All Orders"
+let deduplicateParties = [];        // "Keep Latest Only"
+let specialParties = [];            // Marka grouping
+let fullyExcludedParties = [];      // Exclude completely
+let partyRulesMap = {};             // Map of partyName -> rule
+let partyMerges = {};               // Map of spellingMistakePartyName -> correctedPartyName 
+
+// --- Event Listeners ---
+
+// Main Tab Switch Listeners
+mainTabProcess.addEventListener('click', () => switchMainView('process'));
+mainTabInsights.addEventListener('click', () => switchMainView('insights'));
+mainTabSettings.addEventListener('click', () => switchMainView('settings'));
+
+function switchMainView(viewName) {
+    const tabs = {
+        process: { btn: mainTabProcess, view: viewProcessContainer, title: "Process File" },
+        insights: { btn: mainTabInsights, view: viewInsightsContainer, title: "Data Insights Dashboard" },
+        settings: { btn: mainTabSettings, view: viewSettingsContainer, title: "Rules & Settings" }
+    };
+    
+    Object.keys(tabs).forEach(k => {
+        const item = tabs[k];
+        if (k === viewName) {
+            item.btn.classList.add('active');
+            item.view.classList.remove('hidden');
+            document.getElementById('viewTitle').textContent = item.title;
+        } else {
+            item.btn.classList.remove('active');
+            item.view.classList.add('hidden');
+        }
+    });
+    
+    if (viewName !== 'process') {
+        cancelAnimation();
+    }
+}
+
+// --- File Selector Wrappers (Native Dialog vs Browser Picker) ---
+async function triggerFileSelection() {
+    if (window.electronAPI) {
+        try {
+            const fileObj = await window.electronAPI.selectFile();
+            if (fileObj) {
+                const mockFile = new File([fileObj.data], fileObj.name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                mockFile.path = fileObj.path;
+                fileInput.file = mockFile;
+                handleFile(mockFile);
+            }
+        } catch (err) {
+            console.error("Native select error", err);
+            showToast("Error opening explorer dialog", "error");
+        }
+    } else {
+        fileInput.click();
+    }
+}
+
+// --- Helper: Update file metadata preview card ---
+function updateFilePreview(rawData, transData) {
+    document.getElementById('statTotalRows').textContent = rawData.length;
+}
+
+// --- Core Functions ---
+function handleFile(file) {
+    const validTypes = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
+    if (validTypes.includes(file.type) || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+        const fileName = file.name;
+        fileNameDisplay.textContent = `Selected: ${fileName}`;
+        showToast(`File "${fileName}" selected successfully!`, 'success');
+        originalFileName = fileName;
+        transformButton.disabled = false;
+        messageText.textContent = ''; showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
+        fileInput.file = file;
+
+        // Show metadata preview
+        document.getElementById('previewEmptyState').classList.add('hidden');
+        document.getElementById('fileStatsContainer').classList.remove('hidden');
+        document.getElementById('statFileName').textContent = file.name;
+        document.getElementById('statFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+        document.getElementById('statTotalRows').textContent = 'Scanning...';
+
+        // Show scanning indicator
+        const scanIndicator = document.getElementById('scanningIndicator');
+        scanIndicator.classList.remove('hidden');
+
+        // Auto-scan: quick parse to extract party names
+        const scanReader = new FileReader();
+        scanReader.onload = function(ev) {
+            try {
+                const data = new Uint8Array(ev.target.result);
+                const wb = XLSX.read(data, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+                document.getElementById('statTotalRows').textContent = rawData.length;
+
+                // Quick transform to extract party names
+                const scannedParties = new Set();
+                let headerIdx = -1;
+                for (let i = 0; i < rawData.length; i++) {
+                    if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
+                    const rowStr = rawData[i].join(',').toUpperCase();
+                    if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerIdx = i; break; }
+                }
+                if (headerIdx !== -1) {
+                    let currentParty = '';
+                    for (let i = headerIdx + 1; i < rawData.length; i++) {
+                        const row = rawData[i];
+                        if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
+                        const col0 = row[0] ? String(row[0]).trim() : '';
+                        const partNo = row[2] ? String(row[2]).trim() : '';
+                        const itemName = row[3] ? String(row[3]).trim() : '';
+                        const hasItem = partNo || itemName;
+                        const isOrder = col0.startsWith('APR/SO') || col0.startsWith('DEL');
+                        const isParty = col0 && !isOrder && !hasItem && !col0.toUpperCase().startsWith('TOTAL');
+                        if (isParty) { currentParty = col0.replace(/\s+/g, ' '); scannedParties.add(currentParty); }
+                    }
+                }
+
+                uniquePartiesList = [...scannedParties].sort();
+
+                // Hide scanning indicator, show party selector
+                scanIndicator.classList.add('hidden');
+                const partySelectorCard = document.getElementById('partySelectorCard');
+                partySelectorCard.classList.remove('hidden');
+                partySelectorCard.classList.add('fade-in');
+                document.getElementById('partyScanCount').textContent = `${uniquePartiesList.length} parties`;
+
+                // Check spelling variations
+                const spellingSuggestions = scanForDuplicateParties(uniquePartiesList);
+                renderSpellingSuggestions(spellingSuggestions);
+                
+                renderPartyRulesList();
+                showToast(`Auto-scanned ${uniquePartiesList.length} parties from file`, 'success');
+
+            } catch (scanErr) {
+                console.error('Auto-scan failed:', scanErr);
+                scanIndicator.classList.add('hidden');
+                document.getElementById('statTotalRows').textContent = 'Scan failed';
+            }
+        };
+        scanReader.onerror = function() {
+            scanIndicator.classList.add('hidden');
+            document.getElementById('statTotalRows').textContent = 'Scan error';
+        };
+        scanReader.readAsArrayBuffer(file);
+
+    } else { 
+        showError('errorInvalidFile', null); 
+        transformButton.disabled = true; 
+        fileNameDisplay.textContent = ''; 
+        document.getElementById('previewEmptyState').classList.remove('hidden');
+        document.getElementById('fileStatsContainer').classList.add('hidden');
+        document.getElementById('partySelectorCard').classList.add('hidden');
+    }
+}
+
+function showToast(message, type = "success", ttl = 4000) {
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span>${message}</span><button class="close" onclick="this.parentElement.remove()">&times;</button>`;
+    toastContainer.appendChild(toast); if (ttl > 0) setTimeout(() => toast.remove(), ttl);
+}
+
+function cancelAnimation(){ if(animationFrameId){ cancelAnimationFrame(animationFrameId); animationFrameId = null; } }
+
+function animateProgress(startPercent, endPercent, duration, statusKey) {
+    cancelAnimation(); const startTime = performance.now();
+    function step(currentTime) {
+        const elapsedTime = currentTime - startTime;
+        let progress = Math.min(1, elapsedTime / duration);
+        let easedProgress = 1 - Math.pow(1 - progress, 3);
+        let currentPercent = Math.floor(startPercent + (endPercent - startPercent) * easedProgress);
+        currentPercent = Math.min(currentPercent, 100); 
+        progressBar.style.width = `${currentPercent}%`;
+        
+        const statusMessages = {
+            processingStep1: "Reading file... {percentage}%",
+            processingStep2: "Processing and deduplicating... {percentage}%",
+            processingStep3: "Finalizing worksheets... {percentage}%"
+        };
+        const statusText = statusMessages[statusKey] || '';
+        processingStatus.textContent = statusText.replace('{percentage}', currentPercent);
+        if (progress < 1) animationFrameId = requestAnimationFrame(step);
+        else { progressBar.style.width = `${endPercent}%`; processingStatus.textContent = statusText.replace('{percentage}', endPercent); animationFrameId = null; }
+    }
+    animationFrameId = requestAnimationFrame(step);
+}
+
+function processFile() {
+    if (!fileInput.file) { showError('errorNoFile', null); return; }
+    transformButton.classList.add('hidden'); processingContainer.classList.remove('hidden');
+    messageText.textContent = ''; showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden'); progressBar.style.width = '0%';
+
+    const step1End = 15 + Math.floor(Math.random() * 11);
+    const step1Duration = 400 + Math.floor(Math.random() * 201);
+    animateProgress(0, step1End, step1Duration, 'processingStep1'); 
+
+    const file = fileInput.file;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        setTimeout(() => { 
+            const fileData = new Uint8Array(e.target.result);
+            const step2End = 70 + Math.floor(Math.random() * 16);
+            const step2Duration = 800 + Math.floor(Math.random() * 401);
+            animateProgress(step1End, step2End, step2Duration, 'processingStep2'); 
+
+            function handleSuccess(res) {
+                originalJsonData = res.originalJson;
+                transformedData = res.transformed;
+                finalDeduplicatedData = res.finalDeduplicated;
+                processedWbout = res.wbout;
+
+                // Extract distinct parties and sort alphabetically
+                if (transformedData && transformedData.length > 0) {
+                    uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
+                    // Check spelling variations
+                    const spellingSuggestions = scanForDuplicateParties(uniquePartiesList);
+                    renderSpellingSuggestions(spellingSuggestions);
+                    
+                    renderPartyRulesList();
+                }
+
+                const step3Duration = 400 + Math.floor(Math.random() * 201);
+                animateProgress(step2End, 100, step3Duration, 'processingStep3'); 
+
+                setTimeout(() => {
+                    updateFilePreview(originalJsonData, transformedData);
+
+                    setTimeout(() => {
+                        processingContainer.classList.add('hidden'); uploadContainer.classList.add('hidden');
+                        downloadContainer.classList.remove('hidden'); downloadContainer.classList.add('fade-in');
+                        resetButton.classList.remove('hidden'); resetButton.classList.add('fade-in');
+                        
+                        currentFilteredData = finalDeduplicatedData;
+                        setFilterType('ALL');
+                        
+                        messageText.textContent = "File processed successfully!";
+                        simpleMessage.classList.remove('text-red-500', 'dark:text-red-400'); simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
+                        showToast("File processed successfully!", 'success');
+                    }, step3Duration);
+                }, 10);
+            }
+
+            // Standalone web worker execution path
+            let worker = null;
+            try {
+                worker = new Worker('js/worker.js');
+
+                worker.onmessage = function(workerEvent) {
+                    worker.terminate();
+                    const result = workerEvent.data;
+
+                    if (result.success) {
+                        handleSuccess(result);
+                    } else {
+                        cancelAnimation();
+                        showError('errorProcessing', new Error(result.error));
+                        processingContainer.classList.add('hidden');
+                        transformButton.classList.remove('hidden');
+                    }
+                };
+
+                worker.onerror = function(err) {
+                    console.error("Worker crash, running main thread fallback:", err);
+                    worker.terminate();
+                    runFallback();
+                };
+
+                worker.postMessage({
+                    fileData,
+                    excludedParties,
+                    deduplicateParties,
+                    specialParties,
+                    partyMerges,
+                    fullyExcludedParties
+                });
+            } catch (workerError) {
+                console.error("Failed to create Web Worker, running main thread fallback:", workerError);
+                runFallback();
+            }
+
+            function runFallback() {
+                setTimeout(() => {
+                    try {
+                        const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
+                        const originalSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[originalSheetName];
+                        const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                        
+                        const originalJson = convertArrayOfArraysToObjects(originalRawData);
+                        const transformed = transformExcelData(originalRawData);
+                        const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
+                        
+                        if (originalSheetName !== "SIGFA SHEET") {
+                            workbook.Sheets["SIGFA SHEET"] = worksheet;
+                            delete workbook.Sheets[originalSheetName];
+                            workbook.SheetNames[workbook.SheetNames.indexOf(originalSheetName)] = "SIGFA SHEET";
+                        }
+                        const newWorksheet = XLSX.utils.json_to_sheet(transformed);
+                        autofitColumns(newWorksheet, transformed);
+                        XLSX.utils.book_append_sheet(workbook, newWorksheet, 'WORKING SHEET');
+                        
+                        const deduplicatedWorksheet = XLSX.utils.json_to_sheet(finalDeduplicated);
+                        autofitColumns(deduplicatedWorksheet, finalDeduplicated);
+                        if (deduplicatedWorksheet['!ref']) {
+                            deduplicatedWorksheet['!autofilter'] = { ref: deduplicatedWorksheet['!ref'] };
+                        }
+                        XLSX.utils.book_append_sheet(workbook, deduplicatedWorksheet, 'WITHOUT DUPLICATE');
+                        
+                        const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                        
+                        handleSuccess({
+                            originalJson,
+                            transformed,
+                            finalDeduplicated,
+                            wbout,
+                            originalSheetName
+                        });
+                    } catch (err) {
+                        showError('errorProcessing', err);
+                    }
+                }, 50);
+            }
+
+        }, step1Duration);
+    };
+    reader.onerror = function(e) { cancelAnimation(); showError('errorRead', e.target.error); processingContainer.classList.add('hidden'); transformButton.classList.remove('hidden'); };
+    reader.readAsArrayBuffer(file);
+}
+
+function showError(key, err) {
+    const errorMessages = {
+        errorInvalidFile: "Please select a valid Excel file (.xlsx, .xls, .csv).",
+        errorNoFile: "Please select a file first.",
+        errorRead: "Error reading file. Please check for corruption.",
+        errorProcessing: "An error occurred during transformation. Please check sheet columns.",
+        errorNoData: "No data loaded. Please process a valid sheet first."
+    };
+    const msg = errorMessages[key] || key || "Error occurred";
+    showToast(msg, 'error');
+    messageText.textContent = msg;
+    simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
+    if (err) { detailedError.textContent = err.stack || err.message || err; showErrorLink.classList.remove('hidden'); showErrorLink.onclick = (e) => { e.preventDefault(); detailedError.classList.toggle('hidden'); }; }
+}
+
+async function downloadTransformedFile() {
+    if (!processedWbout) return;
+    downloadExcelButton.disabled = true; 
+    downloadExcelButton.innerHTML = `<span class="flex items-center justify-center"><span>Generating...</span><span class="loading-dots"><span></span><span></span><span></span></span></span>`; 
+    showToast("Generating Excel file...", 'warning');
+    
+    setTimeout(async () => { 
+        try {
+            const baseName = originalFileName.lastIndexOf('.') > -1 ? originalFileName.substring(0, originalFileName.lastIndexOf('.')) : originalFileName;
+            const defaultName = `${baseName}_transformed.xlsx`;
+            
+            if (window.electronAPI) {
+                const savedPath = await window.electronAPI.saveFile({
+                    defaultName: defaultName,
+                    data: processedWbout
+                });
+                if (savedPath) showToast(`Excel saved successfully! ✅`, 'success');
+                else showToast("Save cancelled. ❌", 'warning');
+            } else {
+                const blob = new Blob([processedWbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = defaultName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("Excel file downloaded successfully!", 'success');
+            }
+        } catch (error) {
+            console.error(error);
+            showError('errorProcessing', error);
+        } finally {
+            downloadExcelButton.disabled = false;
+            downloadExcelButton.innerHTML = originalExcelButtonHTML || "Download Transformed Excel File";
+        }
+    }, 50);
+}
+
+function resetUI() {
+    cancelAnimation(); fileInput.value = ''; fileInput.file = null;
+    originalJsonData = null; transformedData = null; finalDeduplicatedData = null; currentFilteredData = null;
+    originalFileName = ''; processedWbout = null; 
+    fileNameDisplay.textContent = ''; messageText.textContent = '';
+    simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
+    showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
+    
+    // Handle visibility
+    uploadContainer.classList.remove('hidden');
+    transformButton.classList.remove('hidden');
+
+    // Reset File Preview Sidebar
+    document.getElementById('previewEmptyState').classList.remove('hidden');
+    document.getElementById('fileStatsContainer').classList.add('hidden');
+    document.getElementById('statFileName').textContent = '';
+    document.getElementById('statFileSize').textContent = '';
+    document.getElementById('statTotalRows').textContent = '0';
+
+    transformButton.disabled = true;
+    downloadContainer.classList.add('hidden'); downloadContainer.classList.remove('fade-in');
+    resetButton.classList.add('hidden'); resetButton.classList.remove('fade-in');
+    processingContainer.classList.add('hidden'); progressBar.style.width = '0%';
+    
+    // Hide Dashboard Content, Show Empty State
+    document.getElementById('dashboardContent').classList.add('hidden');
+    document.getElementById('dashboardEmptyState').classList.remove('hidden');
+    
+    if (chartPartiesInstance) chartPartiesInstance.destroy(); if (chartItemsInstance) chartItemsInstance.destroy(); if (chartTrendInstance) chartTrendInstance.destroy(); if (chartDistributionInstance) chartDistributionInstance.destroy(); if (chartAgingInstance) chartAgingInstance.destroy();
+    searchInput.value = '';
+
+    // Reset party selector
+    uniquePartiesList = [];
+    document.getElementById('partySelectorCard').classList.add('hidden');
+    if (partyRulesList) partyRulesList.innerHTML = `<p class="italic text-gray-400 dark:text-gray-500 text-center py-4">Scanning...</p>`;
+    if (partySearch) partySearch.value = '';
+    if (spellingMergeCard) spellingMergeCard.classList.add('hidden');
+    if (spellingMergeList) spellingMergeList.innerHTML = '';
+}
+
+// --- DASHBOARD & FILTER LOGIC ---
+function setFilterType(type) {
+    currentFilterType = type;
+    [filterAll, filterDel, filterApr].forEach(btn => {
+        btn.className = "px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:ring-2 focus:ring-gray-400 focus:outline-none transition-colors";
+    });
+    const activeBtn = type === 'ALL' ? filterAll : (type === 'DEL' ? filterDel : filterApr);
+    activeBtn.className = "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors shadow-md";
+    applyDashboardFilters();
+}
+
+function applyDashboardFilters() {
+    if (!finalDeduplicatedData) return;
+    const query = searchInput.value.toLowerCase().trim();
+    currentFilteredData = finalDeduplicatedData.filter(row => {
+        const orderNo = String(row['ORDER NO'] || '').toUpperCase();
+        const partyName = String(row['PARTY NAME'] || '').toLowerCase();
+        const itemName = String(row['ITEM NAME'] || '').toLowerCase();
+        const partNo = String(row['PART NO.'] || '').toLowerCase();
+        let matchesType = true;
+        if (currentFilterType === 'DEL') matchesType = orderNo.startsWith('DEL');
+        else if (currentFilterType === 'APR') matchesType = orderNo.startsWith('APR');
+        let matchesSearch = true;
+        if (query) matchesSearch = partyName.includes(query) || itemName.includes(query) || partNo.includes(query);
+        return matchesType && matchesSearch;
+    });
+    updateDashboardUI(currentFilteredData);
+}
+
+function updateDashboardUI(data) {
+    if (!data) return;
+    document.getElementById('dashboardEmptyState').classList.add('hidden');
+    document.getElementById('dashboardContent').classList.remove('hidden');
+    
+    let totalValue = 0, totalQty = 0;
+    const uniqueItems = new Set();
+    const uniqueParties = new Set();
+    const partiesValueMap = {};
+    const itemsQtyMap = {};
+    const dateCountMap = {};
+    
+    // Aging Buckets
+    const agingBuckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+    
+    let delCount = 0, aprCount = 0;
+    const today = new Date();
+
+    dataTableBody.innerHTML = '';
+    const tableRowsLimit = 100;
+    let renderedRows = 0;
+
+    if (data.length === 0) tableEmptyState.classList.remove('hidden'); else tableEmptyState.classList.add('hidden');
+
+    data.forEach(row => {
+        const val = parseFloat(row['VALUE']) || 0;
+        const qty = parseFloat(row['BALANCE']) || parseFloat(row['ORDER QTY']) || 0;
+        const pName = row['PARTY NAME'] || 'Unknown';
+        const iName = row['ITEM NAME'] || 'Unknown';
+        const orderNo = String(row['ORDER NO']).toUpperCase();
+        const dateRaw = row['DATE'];
+
+        totalValue += val; totalQty += qty; uniqueItems.add(iName); uniqueParties.add(pName);
+        partiesValueMap[pName] = (partiesValueMap[pName] || 0) + val;
+        itemsQtyMap[iName] = (itemsQtyMap[iName] || 0) + qty;
+
+        if (orderNo.startsWith('DEL')) delCount++; else if (orderNo.startsWith('APR')) aprCount++;
+
+        if (dateRaw) {
+            const dateObj = parseDMY(dateRaw);
+            if (dateObj.getTime() !== 0) {
+                const isoDate = dateObj.toISOString().split('T')[0];
+                dateCountMap[isoDate] = (dateCountMap[isoDate] || 0) + 1;
+                
+                const diffTime = Math.abs(today - dateObj);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                // Populate Aging Buckets
+                if (diffDays <= 30) agingBuckets['0-30']++;
+                else if (diffDays <= 60) agingBuckets['31-60']++;
+                else if (diffDays <= 90) agingBuckets['61-90']++;
+                else agingBuckets['90+']++;
+
+                if (renderedRows < tableRowsLimit) {
+                    const tr = document.createElement('tr');
+                    tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">${orderNo}</td>
+                        <td class="px-6 py-4">${dateRaw}</td>
+                        <td class="px-6 py-4 text-red-500 font-semibold">${diffDays}</td>
+                        <td class="px-6 py-4 truncate max-w-xs" title="${pName}">${pName}</td>
+                        <td class="px-6 py-4 truncate max-w-xs" title="${iName}">${iName}</td>
+                        <td class="px-6 py-4 text-right">${qty}</td>
+                        <td class="px-6 py-4 text-right">₹${val.toLocaleString('en-IN')}</td>
+                    `;
+                    dataTableBody.appendChild(tr); renderedRows++;
+                }
+            }
+        }
+    });
+
+    dashTotalValueDisplay.textContent = totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0, style: 'currency', currency: 'INR' });
+    dashTotalQtyDisplay.textContent = totalQty.toLocaleString('en-IN');
+    dashUniqueItemsDisplay.textContent = uniqueItems.size;
+    dashUniquePartiesDisplay.textContent = uniqueParties.size;
+
+    const sortedParties = Object.entries(partiesValueMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const sortedItems = Object.entries(itemsQtyMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const sortedDates = Object.keys(dateCountMap).sort();
+    const trendData = sortedDates.map(d => dateCountMap[d]);
+    const trendLabels = sortedDates.map(d => { const p = d.split('-'); return `${p[2]}-${p[1]}`; });
+
+    renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
+}
+
+function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
+    const ctxParties = document.getElementById('chartParties').getContext('2d');
+    const ctxItems = document.getElementById('chartItems').getContext('2d');
+    const ctxTrend = document.getElementById('chartTrend').getContext('2d');
+    const ctxDist = document.getElementById('chartDistribution').getContext('2d');
+    const ctxAging = document.getElementById('chartAging').getContext('2d'); 
+
+    if (chartPartiesInstance) chartPartiesInstance.destroy();
+    if (chartItemsInstance) chartItemsInstance.destroy();
+    if (chartTrendInstance) chartTrendInstance.destroy();
+    if (chartDistributionInstance) chartDistributionInstance.destroy();
+    if (chartAgingInstance) chartAgingInstance.destroy();
+
+    const isDark = htmlElement.classList.contains('dark');
+    const textColor = isDark ? '#e5e7eb' : '#374151';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+
+    chartPartiesInstance = new Chart(ctxParties, { type: 'bar', data: { labels: parties.map(d => d[0].substring(0, 15) + '...'), datasets: [{ label: 'Pending Value (₹)', data: parties.map(d => d[1]), backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
+
+    chartItemsInstance = new Chart(ctxItems, { type: 'bar', indexAxis: 'y', data: { labels: items.map(d => d[0].substring(0, 15) + '...'), datasets: [{ label: 'Qty', data: items.map(d => d[1]), backgroundColor: 'rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: textColor }, grid: { color: gridColor } }, y: { ticks: { color: textColor }, grid: { display: false } } } } });
+
+    chartTrendInstance = new Chart(ctxTrend, { type: 'line', data: { labels: dates, datasets: [{ label: 'Orders', data: trendCounts, borderColor: 'rgba(168, 85, 247, 1)', backgroundColor: 'rgba(168, 85, 247, 0.1)', fill: true, tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
+
+    chartDistributionInstance = new Chart(ctxDist, { type: 'doughnut', data: { labels: ['DEL (Local)', 'APR (Outstation)', 'Other'], datasets: [{ data: [delC, aprC, Math.max(0, (finalDeduplicatedData ? finalDeduplicatedData.length : 0) - delC - aprC)], backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(249, 115, 22, 0.7)', 'rgba(156, 163, 175, 0.5)'], borderColor: ['rgba(59, 130, 246, 1)', 'rgba(249, 115, 22, 1)', 'rgba(156, 163, 175, 1)'], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textColor } } } } });
+
+    chartAgingInstance = new Chart(ctxAging, {
+        type: 'bar',
+        data: {
+            labels: ['0-30 Days', '31-60 Days', '61-90 Days', '90+ Days'],
+            datasets: [{
+                label: 'Orders',
+                data: [aging['0-30'], aging['31-60'], aging['61-90'], aging['90+']],
+                backgroundColor: [
+                    'rgba(34, 197, 94, 0.6)',  // Green
+                    'rgba(59, 130, 246, 0.6)', // Blue
+                    'rgba(249, 115, 22, 0.6)', // Orange
+                    'rgba(239, 68, 68, 0.6)'   // Red
+                ],
+                borderColor: [
+                    'rgba(34, 197, 94, 1)',
+                    'rgba(59, 130, 246, 1)',
+                    'rgba(249, 115, 22, 1)',
+                    'rgba(239, 68, 68, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+                x: { ticks: { color: textColor }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+async function persistConfigValue(key, value) {
+    if (window.electronAPI) {
+        const config = await window.electronAPI.loadConfig() || {};
+        config[key] = value;
+        await window.electronAPI.saveConfig(config);
+    } else {
+        localStorage.setItem(key, typeof value === 'object' ? JSON.stringify(value) : value);
+    }
+}
+
+function toggleTheme() { const newTheme = htmlElement.classList.contains('dark') ? 'light' : 'dark'; persistConfigValue('theme', newTheme); applyTheme(newTheme); }
+
+function applyTheme(theme) {
+    if (theme === 'dark') { 
+        htmlElement.classList.add('dark'); 
+        themeIconLight.classList.add('hidden'); 
+        themeIconDark.classList.remove('hidden'); 
+        if (themeToggleSwitch) themeToggleSwitch.checked = true;
+    } else { 
+        htmlElement.classList.remove('dark'); 
+        themeIconLight.classList.remove('hidden'); 
+        themeIconDark.classList.add('hidden'); 
+        if (themeToggleSwitch) themeToggleSwitch.checked = false;
+    }
+    updateThemeToggleTitle(theme);
+    if (finalDeduplicatedData) updateDashboardUI(currentFilteredData);
+}
+
+function updateThemeToggleTitle(theme) {
+    const currentTheme = theme || (htmlElement.classList.contains('dark') ? 'dark' : 'light');
+    themeToggle.title = currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+}
+
+async function initializeApp() {
+    if (downloadExcelButton) {
+        originalExcelButtonHTML = downloadExcelButton.innerHTML;
+    }
+    let config = {};
+    if (window.electronAPI) {
+        document.getElementById('watermarkVersion').textContent = `v3.27 (Desktop)`;
+        document.getElementById('versionDisplay').textContent = `v3.27 (Desktop)`;
+        
+        // Bind custom window controls
+        const winMin = document.getElementById('winMin');
+        const winMax = document.getElementById('winMax');
+        const winClose = document.getElementById('winClose');
+        
+        if (winMin) winMin.addEventListener('click', () => window.electronAPI.minimize());
+        if (winMax) winMax.addEventListener('click', () => window.electronAPI.maximize());
+        if (winClose) winClose.addEventListener('click', () => window.electronAPI.close());
+        
+        config = await window.electronAPI.loadConfig() || {};
+    } else {
+        document.getElementById('watermarkVersion').textContent = `v3.27`;
+        document.getElementById('versionDisplay').textContent = `v3.27`;
+        const winMin = document.getElementById('winMin');
+        const winMax = document.getElementById('winMax');
+        const winClose = document.getElementById('winClose');
+        if (winMin) winMin.style.display = 'none';
+        if (winMax) winMax.style.display = 'none';
+        if (winClose) winClose.style.display = 'none';
+        
+        try {
+            config = {
+                theme: localStorage.getItem('theme'),
+                sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
+                excludedParties: JSON.parse(localStorage.getItem('excludedParties')),
+                deduplicateParties: JSON.parse(localStorage.getItem('deduplicateParties')),
+                specialParties: JSON.parse(localStorage.getItem('specialParties')),
+                fullyExcludedParties: JSON.parse(localStorage.getItem('fullyExcludedParties')),
+                partyMerges: JSON.parse(localStorage.getItem('partyMerges'))
+            };
+        } catch (e) {
+            config = {};
+        }
+    }
+    
+    // Set dynamic deduplication rules from loaded configuration
+    if (config.excludedParties && Array.isArray(config.excludedParties)) {
+        excludedParties = config.excludedParties;
+    }
+    if (config.deduplicateParties && Array.isArray(config.deduplicateParties)) {
+        deduplicateParties = config.deduplicateParties;
+    }
+    if (config.specialParties && Array.isArray(config.specialParties)) {
+        specialParties = config.specialParties;
+    }
+    if (config.fullyExcludedParties && Array.isArray(config.fullyExcludedParties)) {
+        fullyExcludedParties = config.fullyExcludedParties;
+    }
+    if (config.partyMerges && typeof config.partyMerges === 'object') {
+        partyMerges = config.partyMerges;
+    }
+    
+    // Recompile initial partyRulesMap
+    partyRulesMap = {};
+    excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
+    deduplicateParties.forEach(p => partyRulesMap[p] = 'keep-latest');
+    specialParties.forEach(p => partyRulesMap[p] = 'marka');
+    fullyExcludedParties.forEach(p => partyRulesMap[p] = 'exclude');
+    
+    // Initialize settings visual chips and inputs
+    renderChipsInUI();
+    setupChipInputListeners();
+    
+    const savedTheme = config.theme; 
+    let initialTheme = savedTheme === 'dark' ? 'dark' : (savedTheme === 'light' ? 'light' : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')); 
+    applyTheme(initialTheme);
+    
+    if (config.sidebarCollapsed) {
+        if (sidebar) sidebar.classList.add('collapsed');
+    }
+
+    // Diagnostics for transformButton visibility
+    setTimeout(() => {
+        const btn = document.getElementById('transformButton');
+        console.log('--- DIAGNOSTICS FOR TRANSFORM BUTTON ---');
+        if (!btn) {
+            console.log('ERROR: transformButton not found in DOM!');
+        } else {
+            console.log('transformButton clientWidth/clientHeight:', btn.clientWidth, btn.clientHeight);
+            console.log('transformButton offsetWidth/offsetHeight:', btn.offsetWidth, btn.offsetHeight);
+            console.log('transformButton classes:', Array.from(btn.classList).join(' '));
+            console.log('transformButton display/visibility style:', btn.style.display, btn.style.visibility);
+            console.log('transformButton computed display:', window.getComputedStyle(btn).display);
+            console.log('transformButton parent classes:', btn.parentElement ? Array.from(btn.parentElement.classList).join(' ') : 'no parent');
+            console.log('transformButton parent parent classes:', btn.parentElement && btn.parentElement.parentElement ? Array.from(btn.parentElement.parentElement.classList).join(' ') : 'no grandparent');
+        }
+    }, 1000);
+}
+
+// Bind UI event listeners
+browseButton.addEventListener('click', triggerFileSelection);
+fileDropArea.addEventListener('click', (e) => { if (e.target === fileDropArea || fileDropArea.contains(e.target) && !browseButton.contains(e.target)) triggerFileSelection(); });
+fileDropArea.addEventListener('dragover', (e) => { e.preventDefault(); fileDropArea.classList.add('border-blue-500', 'dark:border-blue-400'); });
+fileDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); fileDropArea.classList.remove('border-blue-500', 'dark:border-blue-400'); });
+fileDropArea.addEventListener('drop', (e) => { e.preventDefault(); fileDropArea.classList.remove('border-blue-500', 'dark:border-blue-400'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+transformButton.addEventListener('click', processFile);
+downloadExcelButton.addEventListener('click', downloadTransformedFile);
+pdfSigfaButton.addEventListener('click', (e) => downloadPdfSigfaSheet(e.currentTarget));
+pdfWorkingButton.addEventListener('click', (e) => downloadPdfWorkingSheet(e.currentTarget));
+pdfDeduplicatedButton.addEventListener('click', (e) => downloadPdfDeduplicatedSheet(e.currentTarget));
+resetButton.addEventListener('click', resetUI);
+
+themeToggle.addEventListener('click', toggleTheme);
+if (themeToggleSwitch) {
+    themeToggleSwitch.addEventListener('change', toggleTheme);
+}
+saveRulesButton.addEventListener('click', saveDeduplicationRules);
+if (exportRulesBtn) exportRulesBtn.addEventListener('click', exportRulesConfig);
+if (importRulesBtn) importRulesBtn.addEventListener('click', () => importRulesInput.click());
+if (importRulesInput) importRulesInput.addEventListener('change', importRulesConfig);
+
+if (hamburgerBtn && sidebar) {
+    hamburgerBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        persistConfigValue('sidebarCollapsed', isCollapsed);
+    });
+}
+
+searchInput.addEventListener('input', applyDashboardFilters);
+filterAll.addEventListener('click', () => setFilterType('ALL'));
+filterDel.addEventListener('click', () => setFilterType('DEL'));
+filterApr.addEventListener('click', () => setFilterType('APR'));
+
+// Settings Sub-Tabs Switching
+const settingsNavItems = document.querySelectorAll('.settings-nav-item');
+const settingsPanes = document.querySelectorAll('.settings-pane');
+
+settingsNavItems.forEach(item => {
+    item.addEventListener('click', () => {
+        settingsNavItems.forEach(nav => nav.classList.remove('active'));
+        item.classList.add('active');
+
+        const tabName = item.dataset.settingsTab;
+        settingsPanes.forEach(pane => {
+            if (pane.id === `settingsPane${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`) {
+                pane.classList.remove('hidden');
+            } else {
+                pane.classList.add('hidden');
+            }
+        });
+    });
+});
+
+// Auto-Updater Renderer Logic
+const checkForUpdatesBtn = document.getElementById('checkForUpdatesBtn');
+const updateSpin = document.getElementById('updateSpin');
+const updateBtnText = document.getElementById('updateBtnText');
+const updateStatusText = document.getElementById('updateStatusText');
+const updateProgressContainer = document.getElementById('updateProgressContainer');
+const updateProgressBar = document.getElementById('updateProgressBar');
+const updateProgressPercent = document.getElementById('updateProgressPercent');
+
+let appUpdateState = 'idle'; 
+
+if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdates) {
+    checkForUpdatesBtn.addEventListener('click', () => {
+        if (appUpdateState === 'idle') {
+            appUpdateState = 'checking';
+            updateSpin.classList.remove('hidden');
+            updateBtnText.textContent = 'Checking for updates...';
+            updateStatusText.textContent = 'Contacting the release repository...';
+            window.electronAPI.checkForUpdates();
+        } else if (appUpdateState === 'ready') {
+            window.electronAPI.installUpdate();
+        }
+    });
+
+    window.electronAPI.onUpdateMessage((status, info) => {
+        console.log('Update message received:', status, info);
+        if (status === 'checking') {
+            appUpdateState = 'checking';
+            updateSpin.classList.remove('hidden');
+            updateBtnText.textContent = 'Checking for updates...';
+            updateStatusText.textContent = 'Checking release registry...';
+        } else if (status === 'available') {
+            appUpdateState = 'downloading';
+            updateSpin.classList.add('hidden');
+            updateBtnText.textContent = 'Downloading update...';
+            checkForUpdatesBtn.disabled = true;
+            updateStatusText.textContent = `New version ${info ? info.version : ''} found! Starting download...`;
+            updateProgressContainer.classList.remove('hidden');
+        } else if (status === 'not-available') {
+            appUpdateState = 'idle';
+            updateSpin.classList.add('hidden');
+            updateBtnText.textContent = 'Check for Updates';
+            checkForUpdatesBtn.disabled = false;
+            updateStatusText.textContent = 'You are currently running the latest version.';
+            showToast('You are running the latest version! ✅', 'success');
+        } else if (status === 'progress') {
+            appUpdateState = 'downloading';
+            const percent = Math.round(info);
+            updateProgressBar.style.width = `${percent}%`;
+            updateProgressPercent.textContent = `${percent}%`;
+            updateStatusText.textContent = `Downloading package... (${percent}%)`;
+        } else if (status === 'downloaded') {
+            appUpdateState = 'ready';
+            updateSpin.classList.add('hidden');
+            updateProgressContainer.classList.add('hidden');
+            checkForUpdatesBtn.disabled = false;
+            checkForUpdatesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            checkForUpdatesBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            updateBtnText.textContent = 'Restart & Install Update';
+            updateStatusText.textContent = 'Update downloaded successfully! Click button to restart and apply.';
+            showToast('Update ready to install! 📦', 'success');
+        } else if (status === 'error') {
+            appUpdateState = 'idle';
+            updateSpin.classList.add('hidden');
+            updateProgressContainer.classList.add('hidden');
+            checkForUpdatesBtn.disabled = false;
+            updateBtnText.textContent = 'Check for Updates';
+            updateStatusText.textContent = 'Check failed. Verify network connection.';
+            showToast('Update check failed: ' + info, 'error');
+        }
+    });
+}
+
+// Quick search filter for rules list
+partySearch.addEventListener('input', () => {
+    const query = partySearch.value.toLowerCase().trim();
+    const items = partyRulesList.querySelectorAll('.party-rule-item');
+    items.forEach(item => {
+        const party = (item.dataset.party || '').toLowerCase();
+        item.style.display = (!query || party.includes(query)) ? '' : 'none';
+    });
+});
+
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); triggerFileSelection(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!transformButton.disabled) transformButton.click(); }
+    if (e.key === 'Escape' && !resetButton.classList.contains('hidden')) { e.preventDefault(); resetUI(); }
+});
+
+// Window Drag & Drop Overlay Event Handlers
+let dragCounter = 0;
+const dragDropOverlay = document.getElementById('dragDropOverlay');
+const dragDropContent = document.getElementById('dragDropContent');
+
+window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) {
+        dragDropOverlay.classList.remove('pointer-events-none', 'opacity-0');
+        dragDropOverlay.classList.add('opacity-100');
+        dragDropContent.classList.remove('scale-95');
+        dragDropContent.classList.add('scale-100');
+    }
+});
+
+window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+});
+
+window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+        dragDropOverlay.classList.remove('opacity-100', 'scale-100');
+        dragDropOverlay.classList.add('pointer-events-none', 'opacity-0');
+        dragDropContent.classList.remove('scale-100');
+        dragDropContent.classList.add('scale-95');
+    }
+});
+
+window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dragDropOverlay.classList.remove('opacity-100', 'scale-100');
+    dragDropOverlay.classList.add('pointer-events-none', 'opacity-0');
+    dragDropContent.classList.remove('scale-100');
+    dragDropContent.classList.add('scale-95');
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+    }
+});
+
+document.addEventListener('DOMContentLoaded', initializeApp);

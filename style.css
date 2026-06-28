@@ -1,0 +1,468 @@
+:root {
+    --microsoft-blue: #0078d4;
+    --microsoft-blue-hover: #106ebe;
+    --microsoft-blue-active: #005a9e;
+    --bg-light: #f3f3f3;
+    --bg-dark: #1f1f1f;
+    --content-bg-light: #ffffff;
+    --content-bg-dark: #2b2b2b;
+    --border-light: #e0e0e0;
+    --border-dark: #3b3b3b;
+    --text-light: #242424;
+    --text-dark: #f5f5f5;
+}
+
+html, body {
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-light);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+html.dark, html.dark body {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+}
+
+/* Loaders & Animation */
+.loader {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--microsoft-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+.dark .loader {
+    border: 3px solid #4b5563;
+    border-top: 3px solid var(--microsoft-blue);
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.fade-in { animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+@keyframes toastFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Microsoft Card Component */
+.ms-card {
+    background: var(--content-bg-light);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: background-color 0.15s, border-color 0.15s;
+}
+.dark .ms-card {
+    background: var(--content-bg-dark);
+    border: 1px solid var(--border-dark);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Microsoft Tab Button Pattern */
+.ms-tab-btn {
+    position: relative;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #505050;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.dark .ms-tab-btn {
+    color: #adadad;
+}
+.ms-tab-btn:hover {
+    color: #111111;
+}
+.dark .ms-tab-btn:hover {
+    color: #ffffff;
+}
+.ms-tab-btn.active {
+    font-weight: 600;
+    color: var(--microsoft-blue) !important;
+}
+.dark .ms-tab-btn.active {
+    color: #ffffff !important;
+}
+.ms-tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 3px;
+    background: transparent;
+    transition: background-color 0.15s;
+    border-radius: 3px 3px 0 0;
+}
+.ms-tab-btn.active::after {
+    background: var(--microsoft-blue);
+}
+.dark .ms-tab-btn.active::after {
+    background: var(--microsoft-blue);
+}
+
+/* Inner Sub-tab Switchers */
+.ms-subtab {
+    padding: 5px 12px;
+    font-size: 13px;
+    border-radius: 2px;
+    background: transparent;
+    border: none;
+    color: #505050;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.dark .ms-subtab {
+    color: #adadad;
+}
+.ms-subtab:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.dark .ms-subtab:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+.ms-subtab.active {
+    background: #ffffff;
+    color: var(--microsoft-blue);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.dark .ms-subtab.active {
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+/* Toast Styles */
+#toastContainer {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse; 
+}
+.toast {
+  min-width: 280px;
+  padding: 10px 14px;
+  margin-bottom: 8px; 
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: toastFadeIn .2s ease-out;
+}
+.toast.success { background: #107c41; } /* Excel Green */
+.toast.error   { background: #a80000; } /* Microsoft Red */
+.toast.warning { background: #d83b01; } /* Orange Warning */
+.toast .close {
+  margin-left: auto;
+  cursor: pointer;
+  font-size: 14px;
+  color: white;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Title Bar Drag Area */
+.drag-region {
+    -webkit-app-region: drag;
+}
+.titlebar-btn {
+    -webkit-app-region: no-drag;
+}
+
+/* Fluent Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.2);
+    border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.4);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Fluent Pivot/Segmented Control */
+.tab-btn {
+    background: transparent;
+    color: #505050;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.dark .tab-btn {
+    color: #adadad;
+}
+.tab-btn:hover {
+    color: #111111;
+}
+.dark .tab-btn:hover {
+    color: #ffffff;
+}
+.tab-btn.active {
+    background: #ffffff;
+    color: #111111;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.dark .tab-btn.active {
+    background: #2d2d2d;
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Fluent Navigation Link styles */
+.ms-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #505050;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    width: 100%;
+    text-align: left;
+    position: relative;
+}
+.dark .ms-nav-item {
+    color: #adadad;
+}
+.ms-nav-item:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: #111111;
+}
+.dark .ms-nav-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+}
+.ms-nav-item.active {
+    background: rgba(0, 120, 212, 0.08);
+    color: var(--microsoft-blue) !important;
+    font-weight: 600;
+}
+.dark .ms-nav-item.active {
+    background: rgba(0, 120, 212, 0.15);
+    color: #ffffff !important;
+}
+.ms-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    background: var(--microsoft-blue);
+    border-radius: 2px;
+}
+
+/* Fluent Switch styles (Windows 11) */
+.fluent-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+}
+.fluent-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.fluent-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #e5e5e5;
+    transition: .15s;
+    border-radius: 20px;
+    border: 1px solid #d1d1d1;
+}
+.dark .fluent-slider {
+    background-color: #2b2b2b;
+    border: 1px solid #3b3b3b;
+}
+.fluent-slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #505050;
+    transition: .15s;
+    border-radius: 50%;
+}
+.dark .fluent-slider:before {
+    background-color: #adadad;
+}
+.fluent-switch input:checked + .fluent-slider {
+    background-color: var(--microsoft-blue);
+    border-color: var(--microsoft-blue);
+}
+.fluent-switch input:checked + .fluent-slider:before {
+    transform: translateX(18px);
+    background-color: white;
+}
+
+/* Collapsed Sidebar overrides */
+#sidebar.collapsed {
+    width: 48px;
+}
+#sidebar.collapsed > div {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+#sidebar.collapsed .ms-hamburger-container {
+    justify-content: center;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+#sidebar.collapsed .ms-branding-text {
+    display: none;
+}
+#sidebar.collapsed .ms-nav-item span {
+    display: none;
+}
+#sidebar.collapsed .ms-nav-item {
+    justify-content: center;
+    padding: 8px 0;
+}
+#sidebar.collapsed .ms-nav-item svg {
+    margin: 0;
+}
+#sidebar.collapsed .fluent-switch-container > span {
+    display: none;
+}
+#sidebar.collapsed .fluent-switch-container {
+    justify-content: center;
+    padding: 0;
+}
+
+/* Revamped Settings Layout */
+.settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #606060;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.dark .settings-nav-item {
+    color: #adadad;
+}
+.settings-nav-item:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: #111111;
+}
+.dark .settings-nav-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: #ffffff;
+}
+.settings-nav-item.active {
+    border-left-color: var(--microsoft-blue);
+    background: rgba(0, 134, 240, 0.05);
+    color: var(--microsoft-blue);
+    font-weight: 600;
+}
+.dark .settings-nav-item.active {
+    background: rgba(0, 134, 240, 0.1);
+    color: #38bdf8;
+}
+
+/* Visual Chip Inputs */
+.chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid #d1d1d1;
+    border-radius: 6px;
+    background: #ffffff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.dark .chip-container {
+    border-color: #2b2b2b;
+    background: #1b1b1b;
+}
+.chip-container:focus-within {
+    border-color: var(--microsoft-blue);
+    box-shadow: 0 0 0 1px var(--microsoft-blue);
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #4b5563;
+    background: #f3f4f6;
+    border-radius: 9999px;
+    border: 1px solid #e5e7eb;
+    transition: all 0.1s ease;
+}
+.dark .chip {
+    color: #d1d5db;
+    background: #2d2d2d;
+    border-color: #3b3b3b;
+}
+.chip:hover {
+    background: #e5e7eb;
+}
+.dark .chip:hover {
+    background: #3b3b3b;
+}
+.chip-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: bold;
+    color: #9ca3af;
+    transition: all 0.1s ease;
+}
+.chip-delete:hover {
+    background: #ef4444;
+    color: white;
+}
+.chip-input {
+    flex-grow: 1;
+    min-width: 120px;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    font-size: 12px;
+    padding: 2px 4px;
+}
