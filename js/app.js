@@ -40,12 +40,7 @@ const themeIconDark = document.getElementById('themeIconDark');
 const htmlElement = document.documentElement;
 const toastContainer = document.getElementById('toastContainer');
 
-// Settings Deduplication Selectors
-const settingsExclusions = document.getElementById('settingsExclusions');
-const settingsSpecialParties = document.getElementById('settingsSpecialParties');
-const settingsMarkaParties = document.getElementById('settingsMarkaParties');
-const settingsFullyExcluded = document.getElementById('settingsFullyExcluded');
-const saveRulesButton = document.getElementById('saveRulesButton');
+// Settings Backup & Restore buttons
 const exportRulesBtn = document.getElementById('exportRulesBtn');
 const importRulesBtn = document.getElementById('importRulesBtn');
 const importRulesInput = document.getElementById('importRulesInput');
@@ -840,7 +835,7 @@ themeToggle.addEventListener('click', toggleTheme);
 if (themeToggleSwitch) {
     themeToggleSwitch.addEventListener('change', toggleTheme);
 }
-saveRulesButton.addEventListener('click', saveDeduplicationRules);
+
 if (exportRulesBtn) exportRulesBtn.addEventListener('click', exportRulesConfig);
 if (importRulesBtn) importRulesBtn.addEventListener('click', () => importRulesInput.click());
 if (importRulesInput) importRulesInput.addEventListener('change', importRulesConfig);

@@ -24,24 +24,6 @@ async function persistRulesToStorage(quiet = false) {
     }
 }
 
-async function saveDeduplicationRules() {
-    excludedParties = settingsExclusions.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    deduplicateParties = settingsSpecialParties.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    specialParties = settingsMarkaParties.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    fullyExcludedParties = settingsFullyExcluded.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-    
-    // Sync to the map
-    partyRulesMap = {};
-    excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
-    deduplicateParties.forEach(p => partyRulesMap[p] = 'keep-latest');
-    specialParties.forEach(p => partyRulesMap[p] = 'marka');
-    fullyExcludedParties.forEach(p => partyRulesMap[p] = 'exclude');
-    
-    await persistRulesToStorage(false);
-    
-    renderPartyRulesList();
-    triggerReDeduplication();
-}
 
 function triggerReDeduplication() {
     if (originalJsonData || transformedData) {
