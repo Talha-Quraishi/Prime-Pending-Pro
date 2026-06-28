@@ -1,0 +1,47 @@
+{
+  "name": "prime-pending-pro",
+  "version": "3.28.0",
+  "description": "Restructure and analyze pending order Excel files",
+  "author": "Talha",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --windows"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.kipl.primependingpro",
+    "productName": "Prime Pending Pro",
+    "electronDist": "./node_modules/electron/dist",
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "quraish-talha",
+        "repo": "prime-pending-pro"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

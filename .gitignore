@@ -1,0 +1,11 @@
+node_modules/
+dist/
+graphify-out/
+.agents/
+.claude/
+.gemini/
+*.xlsx
+*.xls
+*.csv
+.DS_Store
+*.log

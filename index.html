@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pending Order Maker v3.28</title>
+    
+    <!-- Localized Libraries for 100% Offline Capability -->
+    <script src="./libs/tailwind.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
+    <script src="./libs/xlsx.full.min.js"></script>
+    <script src="./libs/jspdf.umd.min.js"></script>
+    <script src="./libs/jspdf.plugin.autotable.min.js"></script>
+    <script src="./libs/chart.umd.js"></script>
+
+    <!-- App Stylesheet -->
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body class="flex flex-col h-screen overflow-hidden bg-[#f3f3f3] dark:bg-[#1f1f1f] text-gray-900 dark:text-gray-100 font-sans select-none">
+
+    <!-- Title Bar -->
+    <div id="titleBar" class="flex items-center justify-between w-full bg-white dark:bg-[#202020] border-b border-gray-200 dark:border-neutral-800 pl-4 pr-0 h-10 z-50 flex-shrink-0 drag-region">
+        <div class="flex items-center gap-2 flex-1 h-full">
+            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12,0 C19,0 24,5 24,12 C24,19 19,24 12,24 C5,24 0,19 0,12 C0,5 5,0 12,0 Z" fill="url(#squircleGradient1)"/>
+                <text x="50%" y="56%" font-size="12" font-weight="bold" font-family="Segoe UI,Arial" fill="white" text-anchor="middle" alignment-baseline="middle">P</text>
+                <defs>
+                    <linearGradient id="squircleGradient1" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#0086f0"/>
+                        <stop offset="100%" stop-color="#0056b3"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+            <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">Prime Pending Pro v3.28</span>
+        </div>
+        <div class="flex items-center h-full">
+            <button id="winMin" class="titlebar-btn hover:bg-gray-200 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-300 w-11 h-full flex items-center justify-center transition-colors focus:outline-none">
+                <svg class="w-3 h-3" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1"/></svg>
+            </button>
+            <button id="winMax" class="titlebar-btn hover:bg-gray-200 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-300 w-11 h-full flex items-center justify-center transition-colors focus:outline-none">
+                <svg class="w-3 h-3" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+            </button>
+            <button id="winClose" class="titlebar-btn hover:bg-red-600 hover:text-white text-gray-700 dark:text-gray-300 w-11 h-full flex items-center justify-center transition-colors focus:outline-none">
+                <svg class="w-3 h-3" viewBox="0 0 10 10"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="currentColor" stroke-width="1"/><line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="currentColor" stroke-width="1"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Layout Wrapper (Sidebar + Main Content Area) -->
+    <div class="flex flex-grow overflow-hidden relative">
+        
+        <!-- Left Sidebar Navigation -->
+        <aside id="sidebar" class="w-60 bg-white dark:bg-[#202020] border-r border-gray-200 dark:border-neutral-800 flex flex-col justify-between flex-shrink-0 z-40 transition-[width] duration-150 ease-in-out">
+            <div class="flex flex-col gap-4 p-4">
+                <!-- App Branding & Hamburger -->
+                <div class="flex items-center gap-2 px-1 py-1 ms-hamburger-container">
+                    <button id="hamburgerBtn" class="hover:bg-gray-100 dark:hover:bg-neutral-800 text-gray-700 dark:text-gray-300 p-1.5 rounded transition-colors focus:outline-none flex items-center justify-center flex-shrink-0" title="Toggle Navigation">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                    <div class="flex items-center gap-2 ms-branding-text overflow-hidden whitespace-nowrap">
+                        <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12,0 C19,0 24,5 24,12 C24,19 19,24 12,24 C5,24 0,19 0,12 C0,5 5,0 12,0 Z" fill="url(#squircleGradient2)"/>
+                            <text x="50%" y="56%" font-size="12" font-weight="bold" font-family="Segoe UI,Arial" fill="white" text-anchor="middle" alignment-baseline="middle">P</text>
+                            <defs>
+                                <linearGradient id="squircleGradient2" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stop-color="#0086f0"/>
+                                    <stop offset="100%" stop-color="#0056b3"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="flex flex-col leading-none">
+                            <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">Prime Pending Pro</span>
+                            <span class="text-[10px] text-gray-400 mt-0.5">SIGFA Deduplicator</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divider -->
+                <div class="h-[1px] bg-gray-100 dark:bg-neutral-800"></div>
+
+                <!-- Navigation Links -->
+                <nav class="flex flex-col gap-1" id="mainTabs">
+                    <button id="mainTabProcess" class="ms-nav-item active" data-view="process" title="Process File">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>Process File</span>
+                    </button>
+                    <button id="mainTabInsights" class="ms-nav-item" data-view="insights" title="Data Insights">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span>Data Insights</span>
+                    </button>
+                    <button id="mainTabSettings" class="ms-nav-item" data-view="settings" title="Rules & Settings">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span>Rules & Settings</span>
+                    </button>
+                </nav>
+            </div>
+            
+            <div class="p-4 flex flex-col gap-2 border-t border-gray-200 dark:border-neutral-800 overflow-hidden">
+                <div class="flex items-center justify-between px-1 fluent-switch-container">
+                    <span class="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider whitespace-nowrap">Dark Theme</span>
+                    <label class="fluent-switch flex-shrink-0">
+                        <input type="checkbox" id="themeToggleSwitch">
+                        <span class="fluent-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow flex flex-col overflow-hidden">
+            <!-- Top Command Bar (Microsoft style) -->
+            <div class="h-12 bg-white dark:bg-[#202020] border-b border-gray-200 dark:border-neutral-800 px-6 flex items-center justify-between flex-shrink-0 z-30">
+                <h2 id="viewTitle" class="text-base font-semibold text-gray-800 dark:text-gray-200">Process File</h2>
+                <div class="flex items-center gap-3">
+                    <span class="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-mono">v3.28</span>
+                </div>
+            </div>
+
+            <!-- Workspace Content Container -->
+            <div class="flex-grow overflow-hidden relative">
+        
+                <!-- View 1: Process File -->
+                <div id="viewProcessContainer" class="h-full flex flex-col md:flex-row gap-6 p-6 overflow-hidden">
+                    <!-- Left Side: Upload zone, File Preview, and Action Buttons (now narrower 2/5 width) -->
+                    <div class="w-full md:w-2/5 flex flex-col gap-4 overflow-y-auto pr-1 custom-scrollbar">
+                        <!-- Dropzone selection card -->
+                        <div class="ms-card p-5 flex flex-col gap-4 flex-shrink-0">
+                            <!-- Process Raw SIGFA -->
+                            <div id="fileDropArea" role="button" tabindex="0" aria-label="Process raw excel sheet drop area" class="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl p-8 text-center cursor-pointer transition-all bg-white/10 dark:bg-black/5">
+                                <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls, .csv">
+                                <div class="flex flex-col items-center gap-2">
+                                    <svg class="w-12 h-12 text-blue-500 opacity-80 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                    <p class="text-sm font-semibold text-gray-700 dark:text-gray-300" data-lang-key="dragDrop">Drag & drop your file here</p>
+                                    <p class="text-xs text-gray-400 dark:text-gray-500" data-lang-key="or">or</p>
+                                    <button id="browseButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded hover:shadow transition-all text-sm" data-lang-key="browse">Browse File</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File Stats Card (Moved to left column for better layout) -->
+                        <div class="ms-card p-5 flex flex-col flex-shrink-0">
+                            <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 mb-3 text-gray-800 dark:text-gray-200 uppercase tracking-wider">File Preview & Summary</h3>
+                            
+                            <!-- Empty preview state -->
+                            <div id="previewEmptyState" class="flex flex-col items-center justify-center text-center p-6 text-gray-400 dark:text-gray-500">
+                                <svg class="w-10 h-10 mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                <p class="text-sm font-semibold">No active file</p>
+                                <p class="text-xs mt-1 max-w-[180px]">Upload or drop an Excel sheet to analyze structures, size and rows.</p>
+                            </div>
+
+                            <!-- Populated preview stats -->
+                            <div id="fileStatsContainer" class="hidden flex flex-col gap-3 text-sm">
+                                <div class="grid grid-cols-2 gap-3 flex-shrink-0">
+                                    <div>
+                                        <span class="text-gray-500 dark:text-gray-400 text-xs">File Name</span>
+                                        <p class="font-bold text-sm text-gray-800 dark:text-gray-200 truncate" id="statFileName"></p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 dark:text-gray-400 text-xs">Size</span>
+                                        <p class="font-bold text-sm text-gray-800 dark:text-gray-200" id="statFileSize"></p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 dark:text-gray-400 text-xs">Raw Row Count</span>
+                                        <p class="font-bold text-sm text-gray-800 dark:text-gray-200" id="statTotalRows">0</p>
+                                    </div>
+                                    <div>
+                                        <span class="text-gray-500 dark:text-gray-400 text-xs">Format Status</span>
+                                        <p class="font-bold text-sm text-green-600 dark:text-green-400" id="statFormat">SIGFA OK</p>
+                                    </div>
+                                </div>
+                                <div id="scanningIndicator" class="hidden flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 py-1">
+                                    <div class="loader w-3 h-3"></div>
+                                    <span>Scanning parties...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action and Status panel -->
+                        <div class="ms-card p-5 flex flex-col gap-4 flex-shrink-0">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200">Execution Controls</h3>
+                                <span class="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded font-mono truncate max-w-[200px]" id="fileName">No file selected</span>
+                            </div>
+
+                            <!-- Main transformation button -->
+                            <div class="flex flex-col gap-3">
+                                <button id="transformButton" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-4 rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow text-sm" disabled data-lang-key="transform">
+                                    Transform File
+                                </button>
+                                
+                                <!-- Progress bar container -->
+                                <div id="processingContainer" class="hidden w-full text-center">
+                                    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-1.5">
+                                        <div id="progressBar" class="bg-blue-600 h-1.5 rounded-full" style="width: 0%"></div>
+                                    </div>
+                                    <p id="processingStatus" class="text-gray-600 dark:text-gray-400 mt-2 font-semibold text-xs"></p>
+                                </div>
+                            </div>
+
+                            <!-- Inline message / error system -->
+                            <div id="messageContainer" class="min-h-[1rem]">
+                                <div id="simpleMessage" class="text-red-500 dark:text-red-400 font-semibold text-center text-sm">
+                                    <span id="messageText"></span>
+                                    <a href="#" id="showErrorLink" class="ml-1 text-blue-500 dark:text-blue-400 underline text-xs hidden" data-lang-key="showErrorDetails">Show details</a>
+                                </div>
+                                <div id="detailedError" class="hidden mt-2 p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded text-xs text-red-700 dark:text-red-300 font-mono overflow-x-auto whitespace-pre-wrap"></div>
+                            </div>
+
+                            <!-- Downloads Block -->
+                            <div id="downloadContainer" class="hidden border-t border-gray-200 dark:border-gray-800/80 pt-4 flex flex-col gap-4">
+                                <div>
+                                    <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2" data-lang-key="downloadExcelHeading">Download Excel File:</p>
+                                    <button id="downloadExcelButton" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition-all text-sm shadow">
+                                        Download Transformed Excel File
+                                    </button>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2" data-lang-key="downloadPDFs">Download PDFs:</p>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <button id="pdfSigfaButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-1.5 rounded transition-all text-xs shadow truncate">
+                                            SIGFA Sheet
+                                        </button>
+                                        <button id="pdfWorkingButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-1.5 rounded transition-all text-xs shadow truncate">
+                                            Working Sheet
+                                        </button>
+                                        <button id="pdfDeduplicatedButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-1.5 rounded transition-all text-xs shadow truncate">
+                                            No Duplicates
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button id="resetButton" class="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:underline hidden focus:outline-none" data-lang-key="reset">Process another file</button>
+                        </div>
+                    </div>
+
+                    <!-- Right Side: Spelling variations & Party Selector (now wider 3/5 width) -->
+                    <div class="w-full md:w-3/5 flex flex-col gap-4 overflow-y-auto pr-1 custom-scrollbar">
+                        <!-- Spelling Auto-Correction Card (hidden by default) -->
+                        <div id="spellingMergeCard" class="ms-card p-4 border border-amber-200 bg-amber-50/40 dark:bg-amber-950/10 dark:border-amber-900/50 flex flex-col gap-2.5 flex-shrink-0 hidden">
+                            <div class="flex items-center gap-2 text-amber-800 dark:text-amber-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                <h4 class="text-xs font-bold uppercase tracking-wider">Spelling Variations</h4>
+                            </div>
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 -mt-1.5">Auto-scanner found near-identical party names. Merge them to clean up duplicates under a single name.</p>
+                            <div id="spellingMergeList" class="space-y-1.5 text-xs max-h-36 overflow-y-auto custom-scrollbar pr-1">
+                                <!-- suggestions dynamic -->
+                            </div>
+                        </div>
+
+                        <!-- Party Selector Card (hidden until auto-scan completes) -->
+                        <div id="partySelectorCard" class="ms-card p-5 flex flex-col gap-4 flex-shrink-0 hidden">
+                            <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-2">
+                                <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">Party Rules Manager</h3>
+                                <span id="partyScanCount" class="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-mono">0 parties</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-2">
+                                Click an icon next to a party to set its rule:<br>
+                                <strong>📋</strong> Keep All | 
+                                <strong>🔄</strong> Keep Latest | 
+                                <strong>🏷️</strong> Marka | 
+                                <strong>❌</strong> Exclude
+                            </p>
+
+                            <!-- Search filter -->
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="partySearch" class="w-full p-2 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Search scanned parties...">
+                            </div>
+
+                            <!-- Party Rules List -->
+                            <div id="partyRulesList" class="max-h-[520px] overflow-y-auto custom-scrollbar border border-gray-200 dark:border-gray-800 rounded bg-gray-50/50 dark:bg-black/10 p-2.5 space-y-1.5 text-xs">
+                                <p class="italic text-gray-400 dark:text-gray-500">Scanning parties...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View 2: Data Insights Dashboard -->
+                <div id="viewInsightsContainer" class="hidden h-full flex flex-col overflow-hidden">
+                    <!-- Filter Bar at top of dashboard (fixed height) -->
+                    <div class="px-6 py-3 bg-white/20 dark:bg-black/10 border-b border-gray-200/50 dark:border-white/5 flex flex-col sm:flex-row gap-4 items-center justify-between flex-shrink-0">
+                        <div class="relative w-full sm:w-72">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </span>
+                            <input type="text" id="searchInput" class="block w-full py-1.5 pl-9 pr-3 text-sm text-gray-900 border border-gray-300 rounded bg-white/80 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:placeholder-gray-500 dark:text-white focus:outline-none" placeholder="Search Item, Party or Part No..." data-lang-key-placeholder="searchPlaceholder">
+                        </div>
+                        
+                        <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50" id="filterTabs">
+                            <button id="filterAll" class="px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All</button>
+                            <button id="filterDel" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">DEL (Local)</button>
+                            <button id="filterApr" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">APR (Outstation)</button>
+                        </div>
+                    </div>
+
+                    <!-- Scrollable dashboard body area -->
+                    <div class="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                        <!-- Dashboard Empty State -->
+                        <div id="dashboardEmptyState" class="flex flex-col items-center justify-center text-center p-12 text-gray-400 dark:text-gray-500 h-64">
+                            <svg class="w-16 h-16 mb-4 text-gray-300 dark:text-gray-700 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                            <p class="text-base font-semibold">No analysis data loaded</p>
+                            <p class="text-sm mt-1 max-w-[280px]">Process a raw SIGFA file under the "Process File" tab to unlock insights.</p>
+                        </div>
+
+                        <!-- Dashboard Content (dynamic visibility) -->
+                        <div id="dashboardContent" class="hidden space-y-6">
+                            <!-- Stat counters -->
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div class="ms-card p-4 text-center">
+                                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashTotalValue">Total Pending Value</span>
+                                    <span id="dashTotalValueDisplay" class="block text-2xl font-bold text-green-600 dark:text-green-400 mt-1">₹0</span>
+                                </div>
+                                <div class="ms-card p-4 text-center">
+                                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashTotalQty">Total Pending Qty</span>
+                                    <span id="dashTotalQtyDisplay" class="block text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">0</span>
+                                </div>
+                                <div class="ms-card p-4 text-center">
+                                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashUniqueItems">Unique Items</span>
+                                    <span id="dashUniqueItemsDisplay" class="block text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">0</span>
+                                </div>
+                                <div class="ms-card p-4 text-center">
+                                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashUniqueParties">Active Parties</span>
+                                    <span id="dashUniquePartiesDisplay" class="block text-2xl font-bold text-orange-600 dark:text-orange-400 mt-1">0</span>
+                                </div>
+                            </div>
+
+                            <!-- Charts row -->
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <!-- Chart: Distribution -->
+                                <div class="ms-card p-4 flex flex-col">
+                                    <h4 class="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 text-center" data-lang-key="chartDistribution">Order Distribution</h4>
+                                    <div class="relative h-44 w-full">
+                                        <canvas id="chartDistribution"></canvas>
+                                    </div>
+                                </div>
+                                
+                                <!-- Chart: Aging -->
+                                <div class="ms-card p-4 flex flex-col lg:col-span-2">
+                                    <h4 class="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 text-center">Aging Analysis (Pending Days)</h4>
+                                    <div class="relative h-44 w-full">
+                                        <canvas id="chartAging"></canvas>
+                                    </div>
+                                </div>
+
+                                <!-- Chart: Top Parties -->
+                                <div class="ms-card p-4 flex flex-col lg:col-span-2">
+                                    <h4 class="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 text-center" data-lang-key="chartTopParties">Top 5 Parties by Pending Value</h4>
+                                    <div class="relative h-44 w-full">
+                                        <canvas id="chartParties"></canvas>
+                                    </div>
+                                </div>
+
+                                <!-- Chart: Top Items -->
+                                <div class="ms-card p-4 flex flex-col lg:col-span-1">
+                                    <h4 class="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 text-center" data-lang-key="chartTopItems">Top 5 Items by Pending Qty</h4>
+                                    <div class="relative h-44 w-full">
+                                        <canvas id="chartItems"></canvas>
+                                    </div>
+                                </div>
+
+                                <!-- Chart: Trend -->
+                                <div class="ms-card p-4 flex flex-col lg:col-span-3">
+                                    <h4 class="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-3 text-center" data-lang-key="chartTrend">Order Trend (By Date)</h4>
+                                    <div class="relative h-44 w-full">
+                                        <canvas id="chartTrend"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Orders table card -->
+                            <div class="ms-card p-5">
+                                <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-3 uppercase tracking-wider" data-lang-key="tableTitle">Detailed Order List</h4>
+                                <div class="data-table-container custom-scrollbar max-h-80 border border-gray-200/50 dark:border-gray-800 rounded">
+                                    <table class="w-full text-xs text-left text-gray-500 dark:text-gray-400 data-table">
+                                        <thead class="text-[11px] text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-800">
+                                            <tr>
+                                                <th class="px-4 py-2">Order No</th>
+                                                <th class="px-4 py-2">Date</th>
+                                                <th class="px-4 py-2">Age (Days)</th>
+                                                <th class="px-4 py-2">Party Name</th>
+                                                <th class="px-4 py-2">Item Name</th>
+                                                <th class="px-4 py-2 text-right">Qty</th>
+                                                <th class="px-4 py-2 text-right">Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="dataTableBody">
+                                            <!-- Dynamic rows -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div id="tableEmptyState" class="hidden text-center py-6 text-sm text-gray-500">No matching orders found.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View 3: Settings & About -->
+                <div id="viewSettingsContainer" class="hidden h-full flex flex-col md:flex-row overflow-hidden relative">
+                    <!-- Left Column: Settings Navigation Tabs -->
+                    <div class="w-full md:w-56 bg-gray-50/50 dark:bg-[#1a1a1a]/50 border-r border-gray-200 dark:border-neutral-800 flex flex-col flex-shrink-0">
+                        <div class="settings-nav-item active" data-settings-tab="general">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                            <span>General & Theme</span>
+                        </div>
+                        <div class="settings-nav-item" data-settings-tab="rules">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                            <span>Deduplication Rules</span>
+                        </div>
+                        <div class="settings-nav-item" data-settings-tab="updates">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.228 9H18.91M7 14.588V19h4.412"></path></svg>
+                            <span>Backup & Updates</span>
+                        </div>
+                        <div class="settings-nav-item" data-settings-tab="about">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>About App</span>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Settings Content Panes -->
+                    <div class="flex-grow overflow-y-auto p-6 custom-scrollbar">
+                        <div class="max-w-2xl mx-auto w-full flex flex-col gap-6">
+
+                            <!-- Pane 1: General Settings -->
+                            <div id="settingsPaneGeneral" class="settings-pane flex flex-col gap-4">
+                                <div class="ms-card p-5 flex flex-col gap-4">
+                                    <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">App Preferences</h3>
+                                    <div class="flex justify-between items-center py-2">
+                                        <div>
+                                            <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200">Color Theme</h4>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">Switch between light and dark backgrounds</p>
+                                        </div>
+                                        <button id="themeToggle" class="flex items-center justify-center p-2 rounded bg-gray-100 dark:bg-neutral-800 border border-gray-200/50 dark:border-gray-800/50 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors focus:outline-none">
+                                            <svg id="themeIconDark" class="w-4 h-4 text-blue-400 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+                                            <svg id="themeIconLight" class="w-4 h-4 text-yellow-500 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="5" stroke-width="2"></circle><line x1="12" y1="1" x2="12" y2="3" stroke-width="2"></line><line x1="12" y1="21" x2="12" y2="23" stroke-width="2"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke-width="2"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke-width="2"></line><line x1="1" y1="12" x2="3" y2="12" stroke-width="2"></line><line x1="21" y1="12" x2="23" y2="12" stroke-width="2"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke-width="2"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke-width="2"></line></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pane 2: Rule Management -->
+                            <div id="settingsPaneRules" class="settings-pane hidden flex flex-col gap-4">
+                                <div class="ms-card p-5 flex flex-col gap-4">
+                                    <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">Deduplication Rules</h3>
+                                    
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Keep All Orders (No Deduplication)</label>
+                                        <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Orders for these parties will not be deduplicated.</p>
+                                        <div class="chip-container" id="chipContainerExclusions">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExclusions">
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Keep Latest Date Only</label>
+                                        <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Selected parties retain only their most recent order.</p>
+                                        <div class="chip-container" id="chipContainerLatest">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputLatest">
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Marka Grouping</label>
+                                        <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Parties whose orders are grouped and matched by Marka identifier.</p>
+                                        <div class="chip-container" id="chipContainerMarka">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputMarka">
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Fully Excluded Parties</label>
+                                        <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Selected parties will be completely omitted from all output reports.</p>
+                                        <div class="chip-container" id="chipContainerExcluded">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExcluded">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pane 3: Backup & Updates -->
+                            <div id="settingsPaneUpdates" class="settings-pane hidden flex flex-col gap-4">
+                                <!-- Rules Backup -->
+                                <div class="ms-card p-5 flex flex-col gap-4">
+                                    <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">Backup & Restore Rules</h3>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                                        Export or import your rule settings (including exclusions, latest date filters, marka, fully excluded lists, and spelling corrections) as a JSON backup.
+                                    </p>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <button id="exportRulesBtn" class="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-800 dark:text-gray-200 font-semibold py-2 px-4 rounded transition-all text-sm border border-gray-200/50 dark:border-gray-800/50 focus:outline-none">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                            Export Rules
+                                        </button>
+                                        <button id="importRulesBtn" class="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-800 dark:text-gray-200 font-semibold py-2 px-4 rounded transition-all text-sm border border-gray-200/50 dark:border-gray-800/50 focus:outline-none">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                            Import Rules
+                                        </button>
+                                        <input type="file" id="importRulesInput" class="hidden" accept=".json">
+                                    </div>
+                                </div>
+
+                                <!-- Software Updates -->
+                                <div class="ms-card p-5 flex flex-col gap-4">
+                                    <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">Software Updates</h3>
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200">Release Updates (Method B)</h4>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400" id="updateStatusText">Check and download the latest software versions automatically.</p>
+                                        </div>
+                                        <span class="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded font-mono font-bold">v3.28.0</span>
+                                    </div>
+                                    
+                                    <!-- Progress indicator -->
+                                    <div id="updateProgressContainer" class="hidden flex flex-col gap-2 mt-2">
+                                        <div class="flex justify-between text-xs font-semibold text-gray-500">
+                                            <span>Downloading update...</span>
+                                            <span id="updateProgressPercent">0%</span>
+                                        </div>
+                                        <div class="w-full bg-gray-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
+                                            <div id="updateProgressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+
+                                    <button id="checkForUpdatesBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-all text-sm shadow-sm flex items-center justify-center gap-2">
+                                        <svg class="w-4 h-4 animate-spin hidden" id="updateSpin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                        <span id="updateBtnText">Check for Updates</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Pane 4: About App -->
+                            <div id="settingsPaneAbout" class="settings-pane hidden flex flex-col gap-4">
+                                <div class="ms-card p-5 flex flex-col gap-4">
+                                    <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">About Prime Pending Pro</h3>
+                                    <div class="text-sm space-y-3 text-gray-600 dark:text-gray-400">
+                                        <p>
+                                            Prime Pending Pro is a production-grade utility tailored specifically for processing and deduplicating raw Excel spreadsheet datasets exported from SIGFA order tracking databases.
+                                        </p>
+                                        <p class="text-xs pt-1">
+                                            Developed by <a href="https://www.instagram.com/quraish_talha" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline font-semibold">@quraish_talha</a>. Connect on Instagram for custom feature support or version releases.
+                                        </p>
+                                        <div class="pt-3 flex justify-between items-center text-xs border-t border-gray-100 dark:border-gray-800/40">
+                                            <span>Software Release Version</span>
+                                            <span class="font-mono font-semibold text-gray-800 dark:text-gray-200">v3.28.0 (Talha)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div> <!-- Close of Main Workspace Container -->
+    </main> <!-- Close of Main Content Area -->
+</div> <!-- Close of Main Layout Wrapper -->
+
+    <!-- Toast Notification Element -->
+    <div id="toastContainer" aria-live="assertive"></div>
+
+    <!-- Watermark Element -->
+    <div id="watermark" class="flex items-center justify-between px-4 h-6 bg-white dark:bg-[#202020] border-t border-gray-200 dark:border-neutral-800 text-[10px] text-gray-500 dark:text-gray-400 z-50 flex-shrink-0" title="Prime Pending Pro v3.28">
+        <div class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12,0 C19,0 24,5 24,12 C24,19 19,24 12,24 C5,24 0,19 0,12 C0,5 5,0 12,0 Z" fill="url(#squircleGradient3)"/>
+                <text x="50%" y="56%" font-size="12" font-weight="bold" font-family="Segoe UI,Arial" fill="white" text-anchor="middle" alignment-baseline="middle">P</text>
+                <defs>
+                    <linearGradient id="squircleGradient3" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#0086f0"/>
+                        <stop offset="100%" stop-color="#0056b3"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+            <span>System Status: Active</span>
+        </div>
+        <div class="flex items-center gap-3 text-[10px] font-medium opacity-80">
+            <span>v3.28.0 • Created by Talha</span>
+            <span class="text-gray-300 dark:text-gray-700">|</span>
+            <span>© 2026 Prime Pending Pro</span>
+        </div>
+    </div>
+
+    <!-- Full-screen Drag & Drop Blur Overlay -->
+    <div id="dragDropOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-md z-[9999] flex flex-col items-center justify-center pointer-events-none opacity-0 transition-opacity duration-200">
+        <div class="ms-card p-10 max-w-md w-full border-2 border-dashed border-blue-500 bg-white/90 dark:bg-[#202020]/90 flex flex-col items-center justify-center gap-4 text-center scale-95 transition-transform duration-200" id="dragDropContent">
+            <div class="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 animate-pulse">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">Drop Excel File Here</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Release to automatically scan and import your pending orders.</p>
+        </div>
+    </div>
+
+    <!-- Modular Script Imports -->
+    <script src="js/processor.js"></script>
+    <script src="js/rules.js"></script>
+    <script src="js/pdf.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

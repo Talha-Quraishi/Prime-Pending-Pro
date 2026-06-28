@@ -1,0 +1,262 @@
+// --- CORE DATA PROCESSING & CONVERSION ALGORITHMS ---
+
+function parseDMY(dateInput) {
+    if (dateInput instanceof Date) return dateInput;
+    if (!dateInput) return new Date(0);
+    
+    // Handle Excel numeric serial number dates
+    if (typeof dateInput === 'number' || (!isNaN(dateInput) && !String(dateInput).includes('-') && !String(dateInput).includes('/'))) {
+        const num = Number(dateInput);
+        if (num > 0) {
+            // Excel base date offset is 25569 days to 1-Jan-1970
+            return new Date((num - 25569) * 86400 * 1000);
+        }
+    }
+    
+    const dateString = String(dateInput).trim();
+    // Handle ISO string dates (YYYY-MM-DD)
+    if (dateString.includes('T') || dateString.match(/^\d{4}-\d{2}-\d{2}/)) {
+        const d = new Date(dateString);
+        if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Standard DD/MM/YYYY or DD-MM-YYYY parsing
+    const parts = dateString.includes('-') ? dateString.split('-') : dateString.split('/');
+    if (parts.length === 3) {
+        const y = parseInt(parts[2], 10), m = parseInt(parts[1], 10) - 1, d = parseInt(parts[0], 10);
+        const fullYear = y < 100 ? (y + 2000) : y;
+        if (!isNaN(fullYear) && !isNaN(m) && !isNaN(d)) return new Date(fullYear, m, d);
+    }
+    return new Date(0);
+}
+
+function convertArrayOfArraysToObjects(data) {
+    if (!data || data.length === 0) return [];
+    let headerRowIndex = -1;
+    for (let i = 0; i < data.length; i++) {
+        if (!data[i] || typeof data[i].join !== 'function') continue;
+        const rowStr = data[i].join(',').toUpperCase();
+        if (rowStr.includes('ORDER NO') || rowStr.includes('PART NO.') || rowStr.includes('ITEM NAME')) { headerRowIndex = i; break; }
+    }
+    if (headerRowIndex === -1) headerRowIndex = 0;
+    const headers = data[headerRowIndex];
+    const arrayOfObjects = [];
+    for (let i = headerRowIndex + 1; i < data.length; i++) { 
+        const row = data[i];
+        if (!row || !Array.isArray(row)) continue;
+        const obj = {};
+        for (let j = 0; j < headers.length; j++) { if (headers[j]) obj[headers[j]] = row[j] || ""; }
+        if (Object.keys(obj).length > 0) arrayOfObjects.push(obj);
+    }
+    return arrayOfObjects;
+}
+
+function transformExcelData(data) {
+    const transformedRows = [];
+    let currentPartyName = '', currentOrderNo = '', currentDate = '';
+    let headerRowIndex = -1;
+    for(let i=0; i<data.length; i++) {
+        if (!data[i] || typeof data[i].join !== 'function') continue; 
+        const rowStr = data[i].join(',').toUpperCase();
+        if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerRowIndex = i; break; }
+    }
+    if (headerRowIndex === -1) throw new Error("Header row not found.");
+    
+    for (let i = headerRowIndex + 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !Array.isArray(row) || row.every(cell => cell === "")) continue;
+        const orderNo = row[0] ? String(row[0]).trim() : '';
+        const partNo = row[2] ? String(row[2]).trim() : '';
+        const itemName = row[3] ? String(row[3]).trim() : '';
+        const hasItemData = partNo || itemName;
+        const isOrderNo = orderNo.startsWith('APR/SO') || orderNo.startsWith('DEL');
+        const isPartyRow = orderNo && !isOrderNo && !hasItemData && !orderNo.toUpperCase().startsWith('TOTAL');
+        
+         if (isPartyRow) { 
+             let pName = orderNo.trim().replace(/\s+/g, ' ');
+             const pNameUpper = pName.toUpperCase();
+             if (typeof partyMerges !== 'undefined' && partyMerges[pNameUpper]) {
+                 pName = partyMerges[pNameUpper];
+             }
+             currentPartyName = pName;
+             currentOrderNo = '';
+             currentDate = '';
+             continue;
+         }
+        if (!hasItemData) continue;
+        if (isOrderNo) { currentOrderNo = orderNo; currentDate = row.length > 1 && row[1] ? String(row[1]).trim() : ''; }
+        if (!currentPartyName || !itemName || !currentDate) continue;
+        if (typeof fullyExcludedParties !== 'undefined' && fullyExcludedParties.includes(currentPartyName.toUpperCase())) continue;
+
+        transformedRows.push({
+            'ORDER NO': currentOrderNo, 'DATE': currentDate, 'PART NO.': partNo, 'PARTY NAME': currentPartyName,
+            'ITEM NAME': itemName, 'ORDER QTY': row[4] || 0, 'DESP QTY': row[5] || 0, 'BALANCE': row[6] || 0,
+            'RATE': row[7] || 0, 'VALUE': row[8] || 0
+        });
+    }
+    return transformedRows;
+}
+
+function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesList, specialPartiesList, fullyExcludedPartiesList) {
+    const partiesToKeepAll = excludedPartiesList || [];            // List 1: Keep All Orders (No deduplication)
+    const partiesToKeepLatestDate = deduplicatePartiesList || [];  // List 2: Keep Latest Date Only (Delete old dates)
+    const specialParty = specialPartiesList || [];                  // Marka grouping (advanced)
+    const fullyExcluded = fullyExcludedPartiesList || [];          // Fully Excluded list
+
+    // Helper to safely parse Balance as float
+    const getBalanceVal = (row) => {
+        if (!row || row['BALANCE'] === undefined || row['BALANCE'] === null) return 0;
+        const str = String(row['BALANCE']).replace(/,/g, '').trim();
+        const parsed = parseFloat(str);
+        return isNaN(parsed) ? 0 : parsed;
+    };
+
+    // 1. Find max date for each groupKey in List 2 (Keep Latest Date Only)
+    const maxGroupDateMap = new Map();
+    for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        if (fullyExcluded.includes(partyName)) continue;
+        
+        // Remove zeros and less than zeros
+        if (getBalanceVal(row) <= 0) continue;
+        
+        // Special parties bypass List 2 to ensure they always get standard item-level deduplication per marka
+        if (specialParty.includes(partyName)) continue;
+
+        if (!partiesToKeepLatestDate.includes(partyName)) continue;
+        if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
+
+        if (!row['DATE']) continue;
+        const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
+
+        let groupKey = partyName;
+        const existingMax = maxGroupDateMap.get(groupKey);
+        if (!existingMax || currentDate > existingMax) {
+            maxGroupDateMap.set(groupKey, currentDate);
+        }
+    }
+
+    // 2. Build the latest date map for the default item-level deduplication (for parties not in List 1 or List 2, OR in specialParties)
+    const latestItemDateMap = new Map();
+    for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        if (fullyExcluded.includes(partyName)) continue;
+        
+        // Remove zeros and less than zeros
+        if (getBalanceVal(row) <= 0) continue;
+        
+        // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
+        if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
+
+        if (!row['DATE']) continue;
+        const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
+
+        let key;
+        if (specialParty.includes(partyName)) {
+            const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
+            const orderParts = cleanOrder.split(/[\s/]+/); 
+            const marka = orderParts.length > 0 && orderParts[orderParts.length - 1] ? orderParts[orderParts.length - 1].toUpperCase() : 'UNKNOWN';
+            key = `${partyName}-${marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+        } else {
+            key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+        }
+        const existingDate = latestItemDateMap.get(key) || new Date(0);
+        if (currentDate >= existingDate) {
+            latestItemDateMap.set(key, currentDate);
+        }
+    }
+
+    // 3. Filter rows into final list
+    const finalData = [];
+    const processedKeys = new Set();
+    for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        if (fullyExcluded.includes(partyName)) continue;
+
+        // Remove zeros and less than zeros
+        if (getBalanceVal(row) <= 0) continue;
+
+        // Case 1: Keep All Orders (No deduplication at all) - bypassed for specialParties
+        if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) {
+            finalData.push(row);
+            continue;
+        }
+
+        // Case 2: Keep Latest Date Orders Only - bypassed for specialParties
+        if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
+            const currentDate = parseDMY(row['DATE']);
+            if (currentDate.getTime() === 0) continue;
+            
+            let groupKey = partyName;
+            const maxDate = maxGroupDateMap.get(groupKey);
+            if (maxDate && currentDate.getTime() === maxDate.getTime()) {
+                finalData.push(row);
+            }
+            continue;
+        }
+
+        // Case 3: Default item-level deduplication
+        const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
+        
+        let key;
+        if (specialParty.includes(partyName)) {
+            const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
+            const orderParts = cleanOrder.split(/[\s/]+/); 
+            const marka = orderParts.length > 0 && orderParts[orderParts.length - 1] ? orderParts[orderParts.length - 1].toUpperCase() : 'UNKNOWN';
+            key = `${partyName}-${marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+        } else {
+            key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+        }
+        const latestDate = latestItemDateMap.get(key);
+        if (latestDate && currentDate.getTime() === latestDate.getTime()) {
+            if (!processedKeys.has(key)) {
+                finalData.push(row);
+                processedKeys.add(key);
+            }
+        }
+    }
+    return finalData;
+}
+
+function autofitColumns(ws, data) {
+    if (!data || data.length === 0) return;
+    const keys = Object.keys(data[0]);
+    const colWidths = keys.map(key => {
+        let maxLen = key.length;
+        for (const row of data) {
+            const val = row[key];
+            if (val !== undefined && val !== null) {
+                const len = String(val).length;
+                if (len > maxLen) maxLen = len;
+            }
+        }
+        return { wch: maxLen + 2 };
+    });
+    ws['!cols'] = colWidths;
+}
+
+function getLevenshteinDistance(a, b) {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+    for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1, // substitution
+                    matrix[i][j - 1] + 1,     // insertion
+                    matrix[i - 1][j] + 1      // deletion
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+}
