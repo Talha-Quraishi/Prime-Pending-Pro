@@ -31,6 +31,9 @@ function triggerReDeduplication() {
         finalDeduplicatedData = findAndKeepLatestOrders(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
         currentFilteredData = finalDeduplicatedData;
         applyDashboardFilters();
+        if (typeof regenerateWorkbook === 'function') {
+            regenerateWorkbook();
+        }
     }
 }
 
@@ -407,6 +410,16 @@ function renderSpellingSuggestions(suggestions) {
         btn.addEventListener('click', () => {
             // Add to partyMerges map!
             partyMerges[s.src.toUpperCase()] = s.target;
+            
+            // Apply the merge to already-transformed data in-place
+            if (typeof transformedData !== 'undefined' && transformedData) {
+                transformedData.forEach(row => {
+                    const nameUpper = String(row['PARTY NAME']).toUpperCase();
+                    if (partyMerges[nameUpper]) {
+                        row['PARTY NAME'] = partyMerges[nameUpper];
+                    }
+                });
+            }
             
             // Remove the source party from uniquePartiesList
             uniquePartiesList = uniquePartiesList.filter(p => p.toUpperCase() !== s.src.toUpperCase());

@@ -1,5 +1,13 @@
 // --- APP INITIALIZATION, NAVIGATION, FILE SELECTION & MAIN THREAD RUNNERS ---
 
+function getLocalDateString(dateObj) {
+    if (!dateObj || dateObj.getTime() === 0) return '';
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 // --- DOM Elements ---
 const fileInput = document.getElementById('fileInput');
 const fileDropArea = document.getElementById('fileDropArea');
@@ -80,6 +88,7 @@ let uniquePartiesList = [];       // Unique parties list from active file
 
 let originalFileName = '';
 let processedWbout = null;
+let uploadedFileData = null;
 
 let animationFrameId = null;
 let originalExcelButtonHTML = '';
@@ -290,6 +299,7 @@ function processFile() {
     reader.onload = function(e) {
         setTimeout(() => { 
             const fileData = new Uint8Array(e.target.result);
+            uploadedFileData = fileData;
             const step2End = 70 + Math.floor(Math.random() * 16);
             const step2Duration = 800 + Math.floor(Math.random() * 401);
             animateProgress(step1End, step2End, step2Duration, 'processingStep2'); 
@@ -476,7 +486,7 @@ async function downloadTransformedFile() {
 function resetUI() {
     cancelAnimation(); fileInput.value = ''; fileInput.file = null;
     originalJsonData = null; transformedData = null; finalDeduplicatedData = null; currentFilteredData = null;
-    originalFileName = ''; processedWbout = null; 
+    originalFileName = ''; processedWbout = null; uploadedFileData = null;
     fileNameDisplay.textContent = ''; messageText.textContent = '';
     simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
     showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
@@ -567,8 +577,8 @@ function updateDashboardUI(data) {
     if (data.length === 0) tableEmptyState.classList.remove('hidden'); else tableEmptyState.classList.add('hidden');
 
     data.forEach(row => {
-        const val = parseFloat(row['VALUE']) || 0;
-        const qty = parseFloat(row['BALANCE']) || parseFloat(row['ORDER QTY']) || 0;
+        const val = safeParseFloat(row['VALUE']);
+        const qty = safeParseFloat(row['BALANCE']) || safeParseFloat(row['ORDER QTY']);
         const pName = row['PARTY NAME'] || 'Unknown';
         const iName = row['ITEM NAME'] || 'Unknown';
         const orderNo = String(row['ORDER NO']).toUpperCase();
@@ -583,7 +593,7 @@ function updateDashboardUI(data) {
         if (dateRaw) {
             const dateObj = parseDMY(dateRaw);
             if (dateObj.getTime() !== 0) {
-                const isoDate = dateObj.toISOString().split('T')[0];
+                const isoDate = getLocalDateString(dateObj);
                 dateCountMap[isoDate] = (dateCountMap[isoDate] || 0) + 1;
                 
                 const diffTime = Math.abs(today - dateObj);
@@ -724,7 +734,7 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.0';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.1';
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -1010,5 +1020,49 @@ window.addEventListener('drop', (e) => {
         handleFile(e.dataTransfer.files[0]);
     }
 });
+
+function regenerateWorkbook() {
+    if (!uploadedFileData || !transformedData || !finalDeduplicatedData) return;
+    try {
+        const workbook = XLSX.read(uploadedFileData, { type: 'array', cellStyles: true });
+        const originalSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[originalSheetName];
+        
+        if (originalSheetName !== "SIGFA SHEET") {
+            workbook.Sheets["SIGFA SHEET"] = worksheet;
+            delete workbook.Sheets[originalSheetName];
+            workbook.SheetNames[workbook.SheetNames.indexOf(originalSheetName)] = "SIGFA SHEET";
+        }
+        
+        // Remove existing WORKING SHEET and WITHOUT DUPLICATE sheets if they exist
+        if (workbook.Sheets['WORKING SHEET']) {
+            delete workbook.Sheets['WORKING SHEET'];
+            const idx = workbook.SheetNames.indexOf('WORKING SHEET');
+            if (idx > -1) workbook.SheetNames.splice(idx, 1);
+        }
+        if (workbook.Sheets['WITHOUT DUPLICATE']) {
+            delete workbook.Sheets['WITHOUT DUPLICATE'];
+            const idx = workbook.SheetNames.indexOf('WITHOUT DUPLICATE');
+            if (idx > -1) workbook.SheetNames.splice(idx, 1);
+        }
+        
+        // Append updated WORKING SHEET
+        const newWorksheet = XLSX.utils.json_to_sheet(transformedData);
+        autofitColumns(newWorksheet, transformedData);
+        XLSX.utils.book_append_sheet(workbook, newWorksheet, 'WORKING SHEET');
+        
+        // Append updated WITHOUT DUPLICATE
+        const deduplicatedWorksheet = XLSX.utils.json_to_sheet(finalDeduplicatedData);
+        autofitColumns(deduplicatedWorksheet, finalDeduplicatedData);
+        if (deduplicatedWorksheet['!ref']) {
+            deduplicatedWorksheet['!autofilter'] = { ref: deduplicatedWorksheet['!ref'] };
+        }
+        XLSX.utils.book_append_sheet(workbook, deduplicatedWorksheet, 'WITHOUT DUPLICATE');
+        
+        processedWbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    } catch (e) {
+        console.error("Failed to regenerate workbook:", e);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', initializeApp);
