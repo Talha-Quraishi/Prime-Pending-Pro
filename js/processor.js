@@ -1,32 +1,71 @@
 // --- CORE DATA PROCESSING & CONVERSION ALGORITHMS ---
 
+function safeParseFloat(val) {
+    if (val === undefined || val === null) return 0;
+    if (typeof val === 'number') return val;
+    const cleanStr = String(val).replace(/,/g, '').trim();
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? 0 : parsed;
+}
+
 function parseDMY(dateInput) {
-    if (dateInput instanceof Date) return dateInput;
-    if (!dateInput) return new Date(0);
+    if (dateInput instanceof Date) {
+        return new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate());
+    }
+    if (!dateInput && dateInput !== 0) return new Date(0);
     
     // Handle Excel numeric serial number dates
-    if (typeof dateInput === 'number' || (!isNaN(dateInput) && !String(dateInput).includes('-') && !String(dateInput).includes('/'))) {
+    if (typeof dateInput === 'number' || (!isNaN(dateInput) && !String(dateInput).includes('-') && !String(dateInput).includes('/') && !String(dateInput).includes('.'))) {
         const num = Number(dateInput);
         if (num > 0) {
             // Excel base date offset is 25569 days to 1-Jan-1970
-            return new Date((num - 25569) * 86400 * 1000);
+            const utcDate = new Date((num - 25569) * 86400 * 1000);
+            return new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
         }
     }
     
     const dateString = String(dateInput).trim();
-    // Handle ISO string dates (YYYY-MM-DD)
-    if (dateString.includes('T') || dateString.match(/^\d{4}-\d{2}-\d{2}/)) {
+    if (!dateString) return new Date(0);
+
+    // Handle ISO string dates (YYYY-MM-DD or containing T)
+    if (dateString.includes('T')) {
         const d = new Date(dateString);
-        if (!isNaN(d.getTime())) return d;
+        if (!isNaN(d.getTime())) {
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        }
     }
     
-    // Standard DD/MM/YYYY or DD-MM-YYYY parsing
-    const parts = dateString.includes('-') ? dateString.split('-') : dateString.split('/');
+    // Split by common date separators: /, -, ., and space
+    const parts = dateString.split(/[-./\s]+/);
     if (parts.length === 3) {
-        const y = parseInt(parts[2], 10), m = parseInt(parts[1], 10) - 1, d = parseInt(parts[0], 10);
+        let y, m, d;
+        if (parts[0].length === 4) {
+            // Format: YYYY-MM-DD
+            y = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+            d = parseInt(parts[2], 10);
+        } else {
+            // Format: DD-MM-YYYY
+            d = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10) - 1;
+            y = parseInt(parts[2], 10);
+        }
+        
         const fullYear = y < 100 ? (y + 2000) : y;
-        if (!isNaN(fullYear) && !isNaN(m) && !isNaN(d)) return new Date(fullYear, m, d);
+        if (!isNaN(fullYear) && !isNaN(m) && !isNaN(d)) {
+            return new Date(fullYear, m, d);
+        }
     }
+    
+    // Fallback: try native Date parsing
+    const nativeParsed = new Date(dateString);
+    if (!isNaN(nativeParsed.getTime())) {
+        if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return new Date(nativeParsed.getUTCFullYear(), nativeParsed.getUTCMonth(), nativeParsed.getUTCDate());
+        }
+        return new Date(nativeParsed.getFullYear(), nativeParsed.getMonth(), nativeParsed.getDate());
+    }
+    
     return new Date(0);
 }
 
@@ -90,8 +129,8 @@ function transformExcelData(data) {
 
         transformedRows.push({
             'ORDER NO': currentOrderNo, 'DATE': currentDate, 'PART NO.': partNo, 'PARTY NAME': currentPartyName,
-            'ITEM NAME': itemName, 'ORDER QTY': row[4] || 0, 'DESP QTY': row[5] || 0, 'BALANCE': row[6] || 0,
-            'RATE': row[7] || 0, 'VALUE': row[8] || 0
+            'ITEM NAME': itemName, 'ORDER QTY': safeParseFloat(row[4]), 'DESP QTY': safeParseFloat(row[5]), 'BALANCE': safeParseFloat(row[6]),
+            'RATE': safeParseFloat(row[7]), 'VALUE': safeParseFloat(row[8])
         });
     }
     return transformedRows;
@@ -105,10 +144,8 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
     // Helper to safely parse Balance as float
     const getBalanceVal = (row) => {
-        if (!row || row['BALANCE'] === undefined || row['BALANCE'] === null) return 0;
-        const str = String(row['BALANCE']).replace(/,/g, '').trim();
-        const parsed = parseFloat(str);
-        return isNaN(parsed) ? 0 : parsed;
+        if (!row) return 0;
+        return safeParseFloat(row['BALANCE']);
     };
 
     // 1. Find max date for each groupKey in List 2 (Keep Latest Date Only)
@@ -117,9 +154,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
-        
-        // Remove zeros and less than zeros
-        if (getBalanceVal(row) <= 0) continue;
         
         // Special parties bypass List 2 to ensure they always get standard item-level deduplication per marka
         if (specialParty.includes(partyName)) continue;
@@ -144,9 +178,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
-        
-        // Remove zeros and less than zeros
-        if (getBalanceVal(row) <= 0) continue;
         
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
