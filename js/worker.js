@@ -47,20 +47,26 @@ self.onmessage = async function(e) {
         }
 
         // Read sheet for normal processing
+        self.postMessage({ action: 'status', progress: 25, message: 'Reading Excel workbook and parsing sheets...' });
         const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
         const originalSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[originalSheetName];
-        const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         
+        self.postMessage({ action: 'status', progress: 45, message: 'Converting sheet rows to structured JSON...' });
+        const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
         const originalJson = convertArrayOfArraysToObjects(originalRawData);
         
         // Assign to global variables for processor functions to read
         self.partyMerges = partyMerges;
         self.fullyExcludedParties = fullyExcludedParties;
         
+        self.postMessage({ action: 'status', progress: 65, message: 'Restructuring rows into parties and orders...' });
         const transformed = transformExcelData(originalRawData);
+        
+        self.postMessage({ action: 'status', progress: 80, message: 'Applying party-specific rules and deduplication...' });
         const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
         
+        self.postMessage({ action: 'status', progress: 95, message: 'Generating styled sheets via ExcelJS...' });
         // Build workbook buffer using ExcelJS
         const wbout = await generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling);
         
