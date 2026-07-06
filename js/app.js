@@ -365,30 +365,12 @@ function showToast(message, type = "success", ttl = 4000) {
     toastContainer.appendChild(toast); if (ttl > 0) setTimeout(() => toast.remove(), ttl);
 }
 
-function cancelAnimation(){ if(animationFrameId){ cancelAnimationFrame(animationFrameId); animationFrameId = null; } }
-
-function animateProgress(startPercent, endPercent, duration, statusKey) {
-    cancelAnimation(); const startTime = performance.now();
-    function step(currentTime) {
-        const elapsedTime = currentTime - startTime;
-        let progress = Math.min(1, elapsedTime / duration);
-        let easedProgress = 1 - Math.pow(1 - progress, 3);
-        let currentPercent = Math.floor(startPercent + (endPercent - startPercent) * easedProgress);
-        currentPercent = Math.min(currentPercent, 100); 
-        progressBar.style.width = `${currentPercent}%`;
-        
-        const statusMessages = {
-            processingStep1: "Reading file... {percentage}%",
-            processingStep2: "Processing and deduplicating... {percentage}%",
-            processingStep3: "Finalizing worksheets... {percentage}%"
-        };
-        const statusText = statusMessages[statusKey] || '';
-        processingStatus.textContent = statusText.replace('{percentage}', currentPercent);
-        if (progress < 1) animationFrameId = requestAnimationFrame(step);
-        else { progressBar.style.width = `${endPercent}%`; processingStatus.textContent = statusText.replace('{percentage}', endPercent); animationFrameId = null; }
-    }
-    animationFrameId = requestAnimationFrame(step);
+function updateProgressUI(percent, statusText) {
+    progressBar.style.width = `${percent}%`;
+    processingStatus.textContent = `${statusText} (${percent}%)`;
 }
+
+function cancelAnimation() {}
 
 function processFile() {
     if (!fileInput.file) { showError('errorNoFile', null); return; }
@@ -402,10 +384,7 @@ function processFile() {
     if (dashSkeleton) dashSkeleton.classList.remove('hidden');
     if (dashEmpty) dashEmpty.classList.add('hidden');
     if (dashContent) dashContent.classList.add('hidden');
-
-    const step1End = 15 + Math.floor(Math.random() * 11);
-    const step1Duration = 400 + Math.floor(Math.random() * 201);
-    animateProgress(0, step1End, step1Duration, 'processingStep1'); 
+    updateProgressUI(5, "Reading raw file data...");
 
     const file = fileInput.file;
     const reader = new FileReader();
@@ -413,11 +392,10 @@ function processFile() {
         setTimeout(() => { 
             const fileData = new Uint8Array(e.target.result);
             uploadedFileData = fileData;
-            const step2End = 70 + Math.floor(Math.random() * 16);
-            const step2Duration = 800 + Math.floor(Math.random() * 401);
-            animateProgress(step1End, step2End, step2Duration, 'processingStep2'); 
+            updateProgressUI(15, "Initializing processing engine...");
 
             function handleSuccess(res) {
+                updateProgressUI(100, "Transformation complete! Rendering interface...");
                 originalJsonData = res.originalJson;
                 transformedData = res.transformed;
                 finalDeduplicatedData = res.finalDeduplicated;
@@ -428,9 +406,6 @@ function processFile() {
                     uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
                     renderPartyRulesList();
                 }
-
-                const step3Duration = 400 + Math.floor(Math.random() * 201);
-                animateProgress(step2End, 100, step3Duration, 'processingStep3'); 
 
                 setTimeout(() => {
                     updateFilePreview(originalJsonData, transformedData);
@@ -456,8 +431,8 @@ function processFile() {
                         messageText.textContent = "File processed successfully!";
                         simpleMessage.classList.remove('text-red-500', 'dark:text-red-400'); simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
                         showToast("File processed successfully!", 'success');
-                    }, step3Duration);
-                }, 10);
+                    }, 150);
+                }, 200);
             }
 
             // Standalone web worker execution path
@@ -466,13 +441,16 @@ function processFile() {
                 worker = new Worker('js/worker.js');
 
                 worker.onmessage = function(workerEvent) {
-                    worker.terminate();
                     const result = workerEvent.data;
+                    if (result.action === 'status') {
+                        updateProgressUI(result.progress, result.message);
+                        return;
+                    }
+                    worker.terminate();
 
                     if (result.success) {
                         handleSuccess(result);
                     } else {
-                        cancelAnimation();
                         showError('errorProcessing', new Error(result.error));
                         processingContainer.classList.add('hidden');
                         transformButton.classList.remove('hidden');
@@ -501,46 +479,58 @@ function processFile() {
             }
 
             function runFallback() {
+                updateProgressUI(20, "Reading workbook and parsing sheets...");
                 setTimeout(() => {
                     try {
                         const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
                         const originalSheetName = workbook.SheetNames[0];
                         const worksheet = workbook.Sheets[originalSheetName];
-                        const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
                         
-                        const originalJson = convertArrayOfArraysToObjects(originalRawData);
-                        const transformed = transformExcelData(originalRawData);
-                        const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
-                        
-                        const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
-                        generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling)
-                            .then(wbout => {
-                                handleSuccess({
-                                    originalJson,
-                                    transformed,
-                                    finalDeduplicated,
-                                    wbout,
-                                    originalSheetName
-                                });
-                            })
-                            .catch(err => {
-                                console.error("ExcelJS fallback export failed:", err);
-                                const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-                                handleSuccess({
-                                    originalJson,
-                                    transformed,
-                                    finalDeduplicated,
-                                    wbout,
-                                    originalSheetName
-                                });
-                            });
-                    } catch (err) {
-                        showError('errorProcessing', err);
+                        updateProgressUI(40, "Converting sheet rows to structured JSON...");
+                        setTimeout(() => {
+                            const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                            const originalJson = convertArrayOfArraysToObjects(originalRawData);
+                            
+                            updateProgressUI(60, "Restructuring rows and applying rules...");
+                            setTimeout(() => {
+                                const transformed = transformExcelData(originalRawData);
+                                const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
+                                
+                                updateProgressUI(80, "Generating styled sheets via ExcelJS...");
+                                const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
+                                setTimeout(() => {
+                                    generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling)
+                                        .then(wbout => {
+                                            handleSuccess({
+                                                originalJson,
+                                                transformed,
+                                                finalDeduplicated,
+                                                wbout,
+                                                originalSheetName
+                                            });
+                                        })
+                                        .catch(err => {
+                                            console.error("ExcelJS fallback export failed:", err);
+                                            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                                            handleSuccess({
+                                                originalJson,
+                                                transformed,
+                                                finalDeduplicated,
+                                                wbout,
+                                                originalSheetName
+                                            });
+                                        });
+                                }, 50);
+                            }, 50);
+                        }, 50);
+                    } catch (fallbackError) {
+                        showError('errorProcessing', fallbackError);
+                        processingContainer.classList.add('hidden');
+                        transformButton.classList.remove('hidden');
                     }
                 }, 50);
             }
-
-        }, step1Duration);
+        }, 300);
     };
     reader.onerror = function(e) { cancelAnimation(); showError('errorRead', e.target.error); processingContainer.classList.add('hidden'); transformButton.classList.remove('hidden'); };
     reader.readAsArrayBuffer(file);
@@ -922,7 +912,7 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.2';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.3';
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
