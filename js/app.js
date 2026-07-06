@@ -912,7 +912,7 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.3';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.4';
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -1104,6 +1104,9 @@ const updateStatusText = document.getElementById('updateStatusText');
 const updateProgressContainer = document.getElementById('updateProgressContainer');
 const updateProgressBar = document.getElementById('updateProgressBar');
 const updateProgressPercent = document.getElementById('updateProgressPercent');
+const whatsNewContainer = document.getElementById('whatsNewContainer');
+const whatsNewVersion = document.getElementById('whatsNewVersion');
+const whatsNewContent = document.getElementById('whatsNewContent');
 
 let appUpdateState = 'idle'; 
 
@@ -1115,6 +1118,14 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             updateBtnText.textContent = 'Checking for updates...';
             updateStatusText.textContent = 'Contacting the release repository...';
             window.electronAPI.checkForUpdates();
+        } else if (appUpdateState === 'available') {
+            appUpdateState = 'downloading';
+            updateSpin.classList.add('hidden');
+            updateBtnText.textContent = 'Downloading update...';
+            checkForUpdatesBtn.disabled = true;
+            updateStatusText.textContent = 'Initializing download...';
+            updateProgressContainer.classList.remove('hidden');
+            window.electronAPI.downloadUpdate();
         } else if (appUpdateState === 'ready') {
             window.electronAPI.installUpdate();
         }
@@ -1127,19 +1138,44 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             updateSpin.classList.remove('hidden');
             updateBtnText.textContent = 'Checking for updates...';
             updateStatusText.textContent = 'Checking release registry...';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
         } else if (status === 'available') {
-            appUpdateState = 'downloading';
+            appUpdateState = 'available';
             updateSpin.classList.add('hidden');
-            updateBtnText.textContent = 'Downloading update...';
-            checkForUpdatesBtn.disabled = true;
-            updateStatusText.textContent = `New version ${info ? info.version : ''} found! Starting download...`;
-            updateProgressContainer.classList.remove('hidden');
+            updateBtnText.textContent = 'Download & Install Now';
+            checkForUpdatesBtn.disabled = false;
+            updateStatusText.textContent = `New version ${info ? info.version : ''} is available!`;
+            
+            // Render Release Notes / What's New details
+            if (whatsNewVersion && whatsNewContent && whatsNewContainer) {
+                whatsNewVersion.textContent = info ? info.version : '';
+                let notes = 'No release notes provided.';
+                if (info) {
+                    if (info.releaseNotes) {
+                        if (Array.isArray(info.releaseNotes)) {
+                            notes = info.releaseNotes.map(n => n.note || n).join('\n');
+                        } else {
+                            notes = info.releaseNotes;
+                        }
+                    } else if (info.releaseName) {
+                        notes = info.releaseName;
+                    }
+                }
+                whatsNewContent.innerHTML = notes;
+                whatsNewContainer.classList.remove('hidden');
+                
+                // Refresh any Lucide icons inside the newly displayed container
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            }
         } else if (status === 'not-available') {
             appUpdateState = 'idle';
             updateSpin.classList.add('hidden');
             updateBtnText.textContent = 'Check for Updates';
             checkForUpdatesBtn.disabled = false;
             updateStatusText.textContent = 'You are currently running the latest version.';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
             showToast('You are running the latest version! ✅', 'success');
         } else if (status === 'progress') {
             appUpdateState = 'downloading';
@@ -1164,6 +1200,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             checkForUpdatesBtn.disabled = false;
             updateBtnText.textContent = 'Check for Updates';
             updateStatusText.textContent = 'Check failed. Verify network connection.';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
             showToast('Update check failed: ' + info, 'error');
         }
     });
