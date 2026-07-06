@@ -17,6 +17,17 @@ function debounce(func, wait) {
     };
 }
 
+function convertIpcBuffer(data) {
+    if (!data) return null;
+    if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
+        return data;
+    }
+    if (data.type === 'Buffer' && Array.isArray(data.data)) {
+        return new Uint8Array(data.data);
+    }
+    return data;
+}
+
 // --- DOM Elements ---
 const fileInput = document.getElementById('fileInput');
 const fileDropArea = document.getElementById('fileDropArea');
@@ -165,7 +176,8 @@ async function triggerFileSelection() {
         try {
             const fileObj = await window.electronAPI.selectFile();
             if (fileObj) {
-                const mockFile = new File([fileObj.data], fileObj.name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const binaryData = convertIpcBuffer(fileObj.data);
+                const mockFile = new File([binaryData], fileObj.name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 mockFile.path = fileObj.path;
                 fileInput.file = mockFile;
                 handleFile(mockFile);
@@ -1353,7 +1365,8 @@ async function loadHistoricalRecord(id) {
         const filename = record ? record.filename : 'historical_file.xlsx';
         
         // Convert to File object
-        const mockFile = new File([fileBuffer], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const binaryData = convertIpcBuffer(fileBuffer);
+        const mockFile = new File([binaryData], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         originalFileName = filename;
         fileNameDisplay.textContent = `Selected (History): ${filename}`;
         
@@ -1380,9 +1393,10 @@ async function downloadHistoricalRaw(id, filename) {
             return;
         }
         
+        const binaryData = convertIpcBuffer(fileBuffer);
         const savedPath = await window.electronAPI.saveFile({
             defaultName: filename,
-            data: fileBuffer,
+            data: binaryData,
             filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls', 'csv'] }]
         });
         

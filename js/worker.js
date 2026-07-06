@@ -64,7 +64,6 @@ self.onmessage = async function(e) {
         // Build workbook buffer using ExcelJS
         const wbout = await generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling);
         
-        const transferList = wbout instanceof ArrayBuffer ? [wbout] : (wbout && wbout.buffer instanceof ArrayBuffer ? [wbout.buffer] : []);
         self.postMessage({
             success: true,
             originalJson,
@@ -72,7 +71,7 @@ self.onmessage = async function(e) {
             finalDeduplicated,
             wbout,
             originalSheetName
-        }, transferList);
+        });
     } catch(err) {
         self.postMessage({ success: false, error: err.message || err });
     }
