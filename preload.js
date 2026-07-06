@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  appVersion: '3.30.3',
+  appVersion: '3.30.4',
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadHistoricalFile: (id) => ipcRenderer.invoke('load-historical-file', id),
   deleteFromHistory: (id) => ipcRenderer.invoke('delete-from-history', id),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.send('download-update'),
   installUpdate: () => ipcRenderer.send('install-update'),
   onUpdateMessage: (callback) => {
     // Strip event from listener and pass arguments

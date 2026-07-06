@@ -207,6 +207,8 @@ app.on('window-all-closed', () => {
 });
 
 // Auto-Updater Event Handlers and IPC bindings
+autoUpdater.autoDownload = false;
+
 autoUpdater.on('checking-for-update', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('update-message', 'checking');
@@ -245,6 +247,10 @@ autoUpdater.on('update-downloaded', (info) => {
 
 ipcMain.on('check-for-updates', () => {
   autoUpdater.checkForUpdatesAndNotify();
+});
+
+ipcMain.on('download-update', () => {
+  autoUpdater.downloadUpdate();
 });
 
 ipcMain.on('install-update', () => {
