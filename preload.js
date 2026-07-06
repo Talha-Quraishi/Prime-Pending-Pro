@@ -1,11 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
 
-// Read version from package.json so it's always in sync
-const packageJson = require(path.join(__dirname, 'package.json'));
+// Read version from main process (passed via additionalArguments in webPreferences)
+const versionArg = process.argv.find(a => a.startsWith('--app-version='));
+const appVersion = versionArg ? versionArg.split('=')[1] : 'unknown';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  appVersion: packageJson.version,
+  appVersion: appVersion,
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
