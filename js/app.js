@@ -912,7 +912,7 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.5';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.6';
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -1138,6 +1138,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             updateSpin.classList.remove('hidden');
             updateBtnText.textContent = 'Checking for updates...';
             updateStatusText.textContent = 'Checking release registry...';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
         } else if (status === 'available') {
             appUpdateState = 'available';
             updateSpin.classList.add('hidden');
@@ -1162,6 +1163,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
                 }
                 whatsNewContent.innerHTML = notes;
                 whatsNewContainer.className = "border border-blue-500 dark:border-blue-400 bg-blue-50/20 dark:bg-blue-950/10 rounded-lg p-3.5 flex flex-col gap-2 text-left mt-2";
+                whatsNewContainer.classList.remove('hidden');
                 
                 // Refresh any Lucide icons inside the newly displayed container
                 if (typeof lucide !== 'undefined') {
@@ -1174,19 +1176,8 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             updateBtnText.textContent = 'Check for Updates';
             checkForUpdatesBtn.disabled = false;
             updateStatusText.textContent = 'You are currently running the latest version.';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
             showToast('You are running the latest version! ✅', 'success');
-            
-            // Reset to default local release notes
-            if (whatsNewVersion && whatsNewContent && whatsNewContainer) {
-                whatsNewVersion.textContent = '3.30.5';
-                whatsNewContent.innerHTML = `<ul class="list-disc list-inside space-y-1">
-                                                 <li><strong>Realistic Progress Bar:</strong> Switched simulation timers to real-time tracking events reporting actual Web Worker execution.</li>
-                                                 <li><strong>Release Notes Panel:</strong> Integrated the What's New panel in settings to view update summaries and change logs.</li>
-                                                 <li><strong>Interactive Prompts:</strong> Added user authorization requirements before downloading update files.</li>
-                                                 <li><strong>Fluid Animations:</strong> Smoother visual transitions inside processing progress bars.</li>
-                                             </ul>`;
-                whatsNewContainer.className = "border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/30 rounded-lg p-3.5 flex flex-col gap-2 text-left mt-2";
-            }
         } else if (status === 'progress') {
             appUpdateState = 'downloading';
             const percent = Math.round(info);
@@ -1210,19 +1201,8 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             checkForUpdatesBtn.disabled = false;
             updateBtnText.textContent = 'Check for Updates';
             updateStatusText.textContent = 'Check failed. Verify network connection.';
+            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
             showToast('Update check failed: ' + info, 'error');
-            
-            // Reset to default local release notes
-            if (whatsNewVersion && whatsNewContent && whatsNewContainer) {
-                whatsNewVersion.textContent = '3.30.5';
-                whatsNewContent.innerHTML = `<ul class="list-disc list-inside space-y-1">
-                                                 <li><strong>Realistic Progress Bar:</strong> Switched simulation timers to real-time tracking events reporting actual Web Worker execution.</li>
-                                                 <li><strong>Release Notes Panel:</strong> Integrated the What's New panel in settings to view update summaries and change logs.</li>
-                                                 <li><strong>Interactive Prompts:</strong> Added user authorization requirements before downloading update files.</li>
-                                                 <li><strong>Fluid Animations:</strong> Smoother visual transitions inside processing progress bars.</li>
-                                             </ul>`;
-                whatsNewContainer.className = "border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/30 rounded-lg p-3.5 flex flex-col gap-2 text-left mt-2";
-            }
         }
     });
 }
