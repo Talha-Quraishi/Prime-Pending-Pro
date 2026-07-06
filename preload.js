@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  appVersion: '3.30.1',
+  appVersion: '3.30.2',
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFile: (payload) => ipcRenderer.invoke('save-file', payload),
   loadConfig: () => ipcRenderer.invoke('load-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+  saveToHistory: (payload) => ipcRenderer.invoke('save-to-history', payload),
+  loadHistoryList: () => ipcRenderer.invoke('load-history-list'),
+  loadHistoricalFile: (id) => ipcRenderer.invoke('load-historical-file', id),
+  deleteFromHistory: (id) => ipcRenderer.invoke('delete-from-history', id),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   installUpdate: () => ipcRenderer.send('install-update'),
   onUpdateMessage: (callback) => {

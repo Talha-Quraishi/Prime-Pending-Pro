@@ -1,11 +1,52 @@
 self.importScripts('../libs/xlsx.full.min.js');
+self.importScripts('../libs/exceljs.min.js');
 self.importScripts('processor.js');
 
-self.onmessage = function(e) {
+self.onmessage = async function(e) {
     try {
-        const { fileData, excludedParties, deduplicateParties, specialParties, partyMerges, fullyExcludedParties } = e.data;
+        const { action, fileData, excludedParties, deduplicateParties, specialParties, partyMerges, fullyExcludedParties, enableExcelStyling } = e.data;
         
-        // Read sheet
+        if (action === 'scan') {
+            // Speed optimization: disable formulas, styles, and HTML features when just auto-scanning
+            const workbook = XLSX.read(fileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
+            const originalSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[originalSheetName];
+            const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+            
+            // Quick transform to extract party names
+            const scannedParties = new Set();
+            let headerIdx = -1;
+            for (let i = 0; i < rawData.length; i++) {
+                if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
+                const rowStr = rawData[i].join(',').toUpperCase();
+                if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerIdx = i; break; }
+            }
+            if (headerIdx !== -1) {
+                let currentParty = '';
+                for (let i = headerIdx + 1; i < rawData.length; i++) {
+                    const row = rawData[i];
+                    if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
+                    const col0 = row[0] ? String(row[0]).trim() : '';
+                    const partNo = row[2] ? String(row[2]).trim() : '';
+                    const itemName = row[3] ? String(row[3]).trim() : '';
+                    const hasItem = partNo || itemName;
+                    const col0Upper = col0.toUpperCase();
+                    const isOrder = col0Upper.startsWith('APR/SO') || col0Upper.startsWith('DEL');
+                    const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
+                    if (isParty) { currentParty = col0.replace(/\s+/g, ' '); scannedParties.add(currentParty); }
+                }
+            }
+            const uniqueParties = [...scannedParties].sort();
+            self.postMessage({
+                success: true,
+                action: 'scan',
+                rowCount: rawData.length,
+                uniqueParties
+            });
+            return;
+        }
+
+        // Read sheet for normal processing
         const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
         const originalSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[originalSheetName];
@@ -20,24 +61,8 @@ self.onmessage = function(e) {
         const transformed = transformExcelData(originalRawData);
         const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
         
-        // Build sheets
-        if (originalSheetName !== "SIGFA SHEET") {
-            workbook.Sheets["SIGFA SHEET"] = worksheet;
-            delete workbook.Sheets[originalSheetName];
-            workbook.SheetNames[workbook.SheetNames.indexOf(originalSheetName)] = "SIGFA SHEET";
-        }
-        const newWorksheet = XLSX.utils.json_to_sheet(transformed);
-        autofitColumns(newWorksheet, transformed);
-        XLSX.utils.book_append_sheet(workbook, newWorksheet, 'WORKING SHEET');
-        
-        const deduplicatedWorksheet = XLSX.utils.json_to_sheet(finalDeduplicated);
-        autofitColumns(deduplicatedWorksheet, finalDeduplicated);
-        if (deduplicatedWorksheet['!ref']) {
-            deduplicatedWorksheet['!autofilter'] = { ref: deduplicatedWorksheet['!ref'] };
-        }
-        XLSX.utils.book_append_sheet(workbook, deduplicatedWorksheet, 'WITHOUT DUPLICATE');
-        
-        const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        // Build workbook buffer using ExcelJS
+        const wbout = await generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling);
         
         const transferList = wbout instanceof ArrayBuffer ? [wbout] : (wbout && wbout.buffer instanceof ArrayBuffer ? [wbout.buffer] : []);
         self.postMessage({

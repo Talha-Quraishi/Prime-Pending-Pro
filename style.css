@@ -466,3 +466,115 @@ html.dark, html.dark body {
     font-size: 12px;
     padding: 2px 4px;
 }
+
+/* ==========================================================================
+   UI/UX UPGRADES: SKELETONS, SPRINGS & DROPZONE ANIMATIONS
+   ========================================================================== */
+
+/* 1. Skeleton Pulse Loader */
+.skeleton {
+    background: linear-gradient(90deg, #ecebeb 25%, #f7f7f7 50%, #ecebeb 75%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+.dark .skeleton {
+    background: linear-gradient(90deg, #2b2b2b 25%, #3c3c3c 50%, #2b2b2b 75%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-party-item {
+    height: 38px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+.dark .skeleton-party-item {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-text {
+    height: 12px;
+    border-radius: 3px;
+    width: 60%;
+}
+
+/* 2. Dropzone Animations */
+.dropzone-animate {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.dropzone-animate.drag-active {
+    border-color: var(--microsoft-blue) !important;
+    background-color: rgba(0, 120, 212, 0.05) !important;
+    transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(0, 120, 212, 0.12);
+}
+.dropzone-animate.drag-active svg,
+.dropzone-animate.drag-active i {
+    animation: bounceIcon 1.2s ease-in-out infinite alternate;
+    color: var(--microsoft-blue-hover) !important;
+    will-change: transform;
+}
+@keyframes bounceIcon {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(0, -8px, 0); }
+}
+
+/* 3. Layout Animations (Standard, lag-free transitions) */
+.springy-hover {
+    /* Hover animations disabled per user request */
+}
+
+/* Tab panes slide in smoothly */
+.tab-pane-transition {
+    animation: smoothSlideIn 0.15s ease-out forwards;
+    will-change: transform, opacity;
+}
+@keyframes smoothSlideIn {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 4px, 0);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+/* Toast notifications fade and slide up smoothly */
+@keyframes smoothToastIn {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+.toast {
+    animation: smoothToastIn 0.2s ease-out forwards !important;
+    will-change: transform, opacity;
+}
+
+/* Sidebar expansion standard transition */
+#sidebar {
+    transition: width 0.15s ease-in-out;
+    will-change: width;
+}
+
+/* Table Layout Fixes */
+.data-table-container {
+    direction: ltr !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    width: 100% !important;
+}
+.data-table-container table {
+    direction: ltr !important;
+    width: 100% !important;
+}
+

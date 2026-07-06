@@ -213,12 +213,19 @@ function importRulesConfig(event) {
                 throw new Error("Invalid backup format. Missing rules configuration arrays.");
             }
 
-            // Update memory state
-            excludedParties = parsed.excludedParties || [];
-            deduplicateParties = parsed.deduplicateParties || [];
-            specialParties = parsed.specialParties || [];
-            fullyExcludedParties = parsed.fullyExcludedParties || [];
-            partyMerges = parsed.partyMerges || {};
+            // Update memory state with uppercase normalization
+            excludedParties = (parsed.excludedParties || []).map(p => String(p).toUpperCase());
+            deduplicateParties = (parsed.deduplicateParties || []).map(p => String(p).toUpperCase());
+            specialParties = (parsed.specialParties || []).map(p => String(p).toUpperCase());
+            fullyExcludedParties = (parsed.fullyExcludedParties || []).map(p => String(p).toUpperCase());
+
+            // Normalize partyMerges keys to uppercase, values as-is
+            partyMerges = {};
+            if (parsed.partyMerges) {
+                for (const key in parsed.partyMerges) {
+                    partyMerges[key.toUpperCase()] = parsed.partyMerges[key];
+                }
+            }
 
             // Sync to partyRulesMap
             partyRulesMap = {};
@@ -233,8 +240,6 @@ function importRulesConfig(event) {
             // Re-render UI list & spelling corrections
             renderPartyRulesList();
             if (transformedData && transformedData.length > 0) {
-                const spellingSuggestions = scanForDuplicateParties(uniquePartiesList);
-                renderSpellingSuggestions(spellingSuggestions);
                 triggerReDeduplication();
             }
 
@@ -276,7 +281,19 @@ function renderPartyRulesList() {
     });
 
     const query = partySearch.value.toLowerCase().trim();
-    partyRulesList.innerHTML = '';
+    
+    // Render sticky frozen header for checkboxes column mapping
+    partyRulesList.innerHTML = `
+        <div class="sticky top-0 z-10 flex items-center justify-between p-2 bg-gray-100 dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-neutral-800 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider -mx-2.5 mb-2 px-[19px] rounded-t select-none">
+            <span class="flex-grow min-w-0 truncate">Party Name</span>
+            <div class="flex items-center flex-shrink-0 mr-1">
+                <span class="w-[75px] text-center" title="Keep All (No deduplication)">📋 All</span>
+                <span class="w-[75px] text-center" title="Keep Latest Date only">🔄 Latest</span>
+                <span class="w-[75px] text-center" title="Marka Grouping">🏷️ Marka</span>
+                <span class="w-[75px] text-center" title="Fully Exclude Party">❌ Exclude</span>
+            </div>
+        </div>
+    `;
     
     uniquePartiesList.forEach(party => {
         const partyUpper = party.toUpperCase();
@@ -285,26 +302,45 @@ function renderPartyRulesList() {
         if (query && !partyUpper.toLowerCase().includes(query)) return;
 
         const itemDiv = document.createElement('div');
-        itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all';
+        itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer';
         itemDiv.dataset.party = partyUpper;
 
         itemDiv.innerHTML = `
-            <span class="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[65%]" title="${partyUpper}">${partyUpper}</span>
-            <div class="flex items-center gap-4 flex-shrink-0 mr-1">
-                <label class="flex items-center justify-center cursor-pointer" title="Keep All (No deduplication)">
-                    <input type="checkbox" data-rule="keep-all" ${activeRule === 'keep-all' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                </label>
-                <label class="flex items-center justify-center cursor-pointer" title="Keep Latest Date only">
-                    <input type="checkbox" data-rule="keep-latest" ${activeRule === 'keep-latest' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                </label>
-                <label class="flex items-center justify-center cursor-pointer" title="Marka Grouping (Advanced)">
-                    <input type="checkbox" data-rule="marka" ${activeRule === 'marka' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                </label>
-                <label class="flex items-center justify-center cursor-pointer" title="Fully Exclude Party">
-                    <input type="checkbox" data-rule="exclude" ${activeRule === 'exclude' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                </label>
+            <span class="font-medium text-gray-800 dark:text-gray-200 truncate flex-grow min-w-0 pr-2" title="${partyUpper}">${partyUpper}</span>
+            <div class="flex items-center flex-shrink-0 mr-1 select-none">
+                <div class="w-[75px] flex justify-center">
+                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Keep All (No deduplication)">
+                        <input type="checkbox" data-rule="keep-all" ${activeRule === 'keep-all' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
+                    </label>
+                </div>
+                <div class="w-[75px] flex justify-center">
+                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Keep Latest Date only">
+                        <input type="checkbox" data-rule="keep-latest" ${activeRule === 'keep-latest' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
+                    </label>
+                </div>
+                <div class="w-[75px] flex justify-center">
+                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Marka Grouping (Advanced)">
+                        <input type="checkbox" data-rule="marka" ${activeRule === 'marka' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
+                    </label>
+                </div>
+                <div class="w-[75px] flex justify-center">
+                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Fully Exclude Party">
+                        <input type="checkbox" data-rule="exclude" ${activeRule === 'exclude' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
+                    </label>
+                </div>
             </div>
         `;
+
+        itemDiv.addEventListener('click', (e) => {
+            // Only set focus active if not clicking directly on a checkbox input (which has its own change listeners)
+            if (e.target.tagName !== 'INPUT') {
+                const rows = Array.from(partyRulesList.querySelectorAll('.party-rule-item'));
+                const idx = rows.indexOf(itemDiv);
+                if (idx !== -1) {
+                    setActivePartyIndex(idx);
+                }
+            }
+        });
 
         const checkboxes = itemDiv.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(cb => {
@@ -333,114 +369,98 @@ function renderPartyRulesList() {
     });
 }
 
-function scanForDuplicateParties(partiesList) {
-    const suggestions = [];
-    const normalizedMap = {};
+
+
+let activePartyIndex = -1;
+
+function setActivePartyIndex(index) {
+    const rows = partyRulesList.querySelectorAll('.party-rule-item');
+    if (rows.length === 0) return;
     
-    partiesList.forEach(party => {
-        const normalized = party.toUpperCase()
-            .replace(/[^A-Z0-9]/g, '')
-            .trim();
-        if (!normalized) return;
-        if (!normalizedMap[normalized]) {
-            normalizedMap[normalized] = [];
+    // Bounds check
+    if (index < 0) index = 0;
+    if (index >= rows.length) index = rows.length - 1;
+    
+    activePartyIndex = index;
+    
+    // Highlight active row and remove active class from others
+    rows.forEach((row, i) => {
+        if (i === index) {
+            row.classList.add('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-300', 'dark:border-blue-800');
+            row.scrollIntoView({ block: 'nearest', behavior: 'auto' }); // instant scroll prevents frame drops
+        } else {
+            row.classList.remove('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-300', 'dark:border-blue-800');
         }
-        normalizedMap[normalized].push(party);
     });
-    
-    // Check identical normalized names
-    for (const normalized in normalizedMap) {
-        const group = normalizedMap[normalized];
-        if (group.length > 1) {
-            const target = group.reduce((a, b) => a.length >= b.length ? a : b);
-            group.forEach(src => {
-                if (src !== target) {
-                    suggestions.push({ src, target, reason: 'Identical spacing/punctuation' });
-                }
-            });
-        }
-    }
-    
-    // Check near-identical Levenshtein distance
-    const uniqueNorms = Object.keys(normalizedMap);
-    for (let i = 0; i < uniqueNorms.length; i++) {
-        for (let j = i + 1; j < uniqueNorms.length; j++) {
-            const normA = uniqueNorms[i];
-            const normB = uniqueNorms[j];
-            const dist = getLevenshteinDistance(normA, normB);
-            if (dist > 0 && dist <= 2) {
-                const groupA = normalizedMap[normA];
-                const groupB = normalizedMap[normB];
-                const srcParty = groupA[0];
-                const targetParty = groupB[0];
-                if (srcParty && targetParty) {
-                    if (!suggestions.some(s => (s.src === srcParty && s.target === targetParty))) {
-                        suggestions.push({ src: srcParty, target: targetParty, reason: `Spelling typo (edit distance: ${dist})` });
-                    }
-                }
-            }
-        }
-    }
-    return suggestions;
 }
 
-function renderSpellingSuggestions(suggestions) {
-    if (!spellingMergeCard || !spellingMergeList) return;
-    if (!suggestions || suggestions.length === 0) {
-        spellingMergeCard.classList.add('hidden');
-        return;
+function toggleActiveRowRule(ruleNum) {
+    const rows = partyRulesList.querySelectorAll('.party-rule-item');
+    if (activePartyIndex < 0 || activePartyIndex >= rows.length) return;
+    
+    const activeRow = rows[activePartyIndex];
+    const partyUpper = activeRow.dataset.party;
+    
+    const ruleTypes = ['keep-all', 'keep-latest', 'marka', 'exclude'];
+    const targetRule = ruleTypes[ruleNum - 1];
+    
+    // Toggle rule
+    const currentRule = partyRulesMap[partyUpper] || 'default';
+    if (currentRule === targetRule) {
+        partyRulesMap[partyUpper] = 'default';
+    } else {
+        partyRulesMap[partyUpper] = targetRule;
     }
+    
+    // Sync checkbox visual states on the row
+    const checkboxes = activeRow.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        if (cb.dataset.rule === targetRule) {
+            cb.checked = (partyRulesMap[partyUpper] === targetRule);
+        } else {
+            cb.checked = false;
+        }
+    });
+    
+    // Save rules and re-deduplicate
+    recompileRulesListsFromMap();
+    renderChipsInUI();
+    persistRulesToStorage(true);
+    triggerReDeduplication();
+    
+    showToast(`Updated rule for ${partyUpper} using shortcut keys!`, 'success', 2000);
+}
 
-    spellingMergeList.innerHTML = '';
-    suggestions.forEach((s, idx) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'flex items-center justify-between py-1 bg-amber-500/5 dark:bg-amber-500/10 rounded px-2 border border-amber-500/20';
-        itemDiv.innerHTML = `
-            <div class="truncate max-w-[70%]" title="Merge ${s.src} into ${s.target}">
-                <span class="text-red-600 dark:text-red-400 line-through font-semibold">${s.src}</span>
-                <span class="text-gray-400 mx-1">➔</span>
-                <span class="text-green-600 dark:text-green-400 font-semibold">${s.target}</span>
-            </div>
-            <button class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded text-[9px] transition-all flex items-center gap-0.5" data-idx="${idx}">
-                Merge
-            </button>
-        `;
-        
-        const btn = itemDiv.querySelector('button');
-        btn.addEventListener('click', () => {
-            // Add to partyMerges map!
-            partyMerges[s.src.toUpperCase()] = s.target;
-            
-            // Apply the merge to already-transformed data in-place
-            if (typeof transformedData !== 'undefined' && transformedData) {
-                transformedData.forEach(row => {
-                    const nameUpper = String(row['PARTY NAME']).toUpperCase();
-                    if (partyMerges[nameUpper]) {
-                        row['PARTY NAME'] = partyMerges[nameUpper];
-                    }
-                });
+// Bind keyboard shortcuts locally once DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    const listEl = document.getElementById('partyRulesList');
+    const searchEl = document.getElementById('partySearch');
+    
+    if (searchEl) {
+        searchEl.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                searchEl.blur();
+                if (listEl) {
+                    listEl.focus();
+                    setActivePartyIndex(0);
+                }
             }
-            
-            // Remove the source party from uniquePartiesList
-            uniquePartiesList = uniquePartiesList.filter(p => p.toUpperCase() !== s.src.toUpperCase());
-            
-            // Hide or re-render spelling suggestions
-            const remaining = suggestions.filter((_, i) => i !== idx);
-            renderSpellingSuggestions(remaining);
-            
-            // Render updated party rules list
-            renderPartyRulesList();
-            
-            showToast(`Merged spelling variant "${s.src}" into "${s.target}"`, 'success');
-            
-            // Retransform to apply new merging rules, and auto-persist!
-            triggerReDeduplication();
-            persistRulesToStorage(true);
         });
-        
-        spellingMergeList.appendChild(itemDiv);
-    });
+    }
     
-    spellingMergeCard.classList.remove('hidden');
-    spellingMergeCard.classList.add('fade-in');
-}
+    if (listEl) {
+        listEl.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActivePartyIndex(activePartyIndex + 1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActivePartyIndex(activePartyIndex - 1);
+            } else if (['1', '2', '3', '4'].includes(e.key)) {
+                e.preventDefault();
+                toggleActiveRowRule(parseInt(e.key));
+            }
+        });
+    }
+});

@@ -4,6 +4,96 @@ const path = require('path');
 const fs = require('fs');
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
+const historyDir = path.join(app.getPath('userData'), 'history');
+const historyIndexPath = path.join(historyDir, 'index.json');
+
+// Ensure history directory exists
+if (!fs.existsSync(historyDir)) {
+  fs.mkdirSync(historyDir, { recursive: true });
+}
+
+ipcMain.handle('save-to-history', async (event, { filename, fileData, metadata }) => {
+  try {
+    const id = Date.now().toString();
+    const filePath = path.join(historyDir, `${id}.xlsx`);
+    
+    // Save binary data
+    fs.writeFileSync(filePath, Buffer.from(fileData));
+    
+    // Update index.json
+    let indexData = [];
+    if (fs.existsSync(historyIndexPath)) {
+      try {
+        indexData = JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
+      } catch (e) {
+        indexData = [];
+      }
+    }
+    
+    const record = {
+      id,
+      filename,
+      date: new Date().toISOString(),
+      sizeBytes: fileData.byteLength || fileData.length,
+      ...metadata
+    };
+    
+    indexData.unshift(record); // Prepend to show newest first
+    fs.writeFileSync(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    return { success: true, record };
+  } catch (e) {
+    console.error(e);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('load-history-list', async () => {
+  if (fs.existsSync(historyIndexPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+});
+
+ipcMain.handle('load-historical-file', async (event, id) => {
+  const filePath = path.join(historyDir, `${id}.xlsx`);
+  if (fs.existsSync(filePath)) {
+    try {
+      return fs.readFileSync(filePath);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  }
+  return null;
+});
+
+ipcMain.handle('delete-from-history', async (event, id) => {
+  try {
+    const filePath = path.join(historyDir, `${id}.xlsx`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    
+    if (fs.existsSync(historyIndexPath)) {
+      let indexData = [];
+      try {
+        indexData = JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
+      } catch (e) {
+        indexData = [];
+      }
+      indexData = indexData.filter(item => item.id !== id);
+      fs.writeFileSync(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    }
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+});
 
 ipcMain.handle('load-config', () => {
   if (fs.existsSync(configPath)) {
