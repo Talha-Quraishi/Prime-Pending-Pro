@@ -912,7 +912,17 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.7';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev';
+    // Populate all version display elements from the single source of truth
+    document.title = `Pending Order Maker v${versionStr}`;
+    const titlebarVer = document.getElementById('titlebarVersion');
+    if (titlebarVer) titlebarVer.textContent = `Prime Pending Pro v${versionStr}`;
+    const updateBadge = document.getElementById('updateVersionBadge');
+    if (updateBadge) updateBadge.textContent = `v${versionStr}`;
+    const aboutLabel = document.getElementById('aboutVersionLabel');
+    if (aboutLabel) aboutLabel.textContent = `v${versionStr} (Talha)`;
+    const watermarkEl = document.getElementById('watermark');
+    if (watermarkEl) watermarkEl.title = `Prime Pending Pro v${versionStr}`;
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -931,7 +941,7 @@ async function initializeApp() {
         config = await window.electronAPI.loadConfig() || {};
     } else {
         const watermarkVer = document.getElementById('watermarkVersion');
-        if (watermarkVer) watermarkVer.textContent = `v${versionStr}`;
+        if (watermarkVer) watermarkVer.textContent = `v${versionStr} • Created by Talha`;
         const verDisp = document.getElementById('versionDisplay');
         if (verDisp) verDisp.textContent = `v${versionStr}`;
         const winMin = document.getElementById('winMin');
@@ -996,22 +1006,6 @@ async function initializeApp() {
         if (sidebar) sidebar.classList.add('collapsed');
     }
 
-    // Diagnostics for transformButton visibility
-    setTimeout(() => {
-        const btn = document.getElementById('transformButton');
-        console.log('--- DIAGNOSTICS FOR TRANSFORM BUTTON ---');
-        if (!btn) {
-            console.log('ERROR: transformButton not found in DOM!');
-        } else {
-            console.log('transformButton clientWidth/clientHeight:', btn.clientWidth, btn.clientHeight);
-            console.log('transformButton offsetWidth/offsetHeight:', btn.offsetWidth, btn.offsetHeight);
-            console.log('transformButton classes:', Array.from(btn.classList).join(' '));
-            console.log('transformButton display/visibility style:', btn.style.display, btn.style.visibility);
-            console.log('transformButton computed display:', window.getComputedStyle(btn).display);
-            console.log('transformButton parent classes:', btn.parentElement ? Array.from(btn.parentElement.classList).join(' ') : 'no parent');
-            console.log('transformButton parent parent classes:', btn.parentElement && btn.parentElement.parentElement ? Array.from(btn.parentElement.parentElement.classList).join(' ') : 'no grandparent');
-        }
-    }, 1000);
 
     if (window.lucide) {
         window.lucide.createIcons();
@@ -1189,7 +1183,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
     });
 
     window.electronAPI.onUpdateMessage((status, info) => {
-        console.log('Update message received:', status, info);
+
         if (status === 'checking') {
             appUpdateState = 'checking';
             updateSpin.classList.remove('hidden');
@@ -1208,7 +1202,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
                 whatsNewVersion.textContent = info ? info.version : '';
                 
                 // Fetch actual commits history comparison
-                const currentVersion = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.7';
+                const currentVersion = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev';
                 const newVersion = info ? info.version : '';
                 fetchFullReleaseNotes(currentVersion, newVersion);
                 

@@ -168,7 +168,7 @@ function setupChipInputListeners() {
 function exportRulesConfig() {
     try {
         const configData = {
-            version: "3.27",
+            version: (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev',
             timestamp: new Date().toISOString(),
             excludedParties: excludedParties || [],
             deduplicateParties: deduplicateParties || [],
