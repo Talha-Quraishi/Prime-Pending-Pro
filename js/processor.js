@@ -49,6 +49,13 @@ function parseDMY(dateInput) {
             d = parseInt(parts[0], 10);
             m = parseInt(parts[1], 10) - 1;
             y = parseInt(parts[2], 10);
+            
+            // Auto-detect and swap if month is out-of-bounds (MM-DD-YYYY format)
+            if (m < 0 || m > 11) {
+                const temp = d;
+                d = parseInt(parts[1], 10);
+                m = parseInt(parts[0], 10) - 1;
+            }
         }
         
         const fullYear = y < 100 ? (y + 2000) : y;
@@ -108,8 +115,9 @@ function transformExcelData(data) {
         const partNo = row[2] ? String(row[2]).trim() : '';
         const itemName = row[3] ? String(row[3]).trim() : '';
         const hasItemData = partNo || itemName;
-        const isOrderNo = orderNo.startsWith('APR/SO') || orderNo.startsWith('DEL');
-        const isPartyRow = orderNo && !isOrderNo && !hasItemData && !orderNo.toUpperCase().startsWith('TOTAL');
+        const orderNoUpper = orderNo.toUpperCase();
+        const isOrderNo = orderNoUpper.startsWith('APR/SO') || orderNoUpper.startsWith('DEL');
+        const isPartyRow = orderNo && !isOrderNo && !hasItemData && !orderNoUpper.startsWith('TOTAL');
         
          if (isPartyRow) { 
              let pName = orderNo.trim().replace(/\s+/g, ' ');
@@ -122,10 +130,8 @@ function transformExcelData(data) {
              currentDate = '';
              continue;
          }
-        if (!hasItemData) continue;
         if (isOrderNo) { currentOrderNo = orderNo; currentDate = row.length > 1 && row[1] ? String(row[1]).trim() : ''; }
         if (!currentPartyName || !itemName || !currentDate) continue;
-        if (typeof fullyExcludedParties !== 'undefined' && fullyExcludedParties.includes(currentPartyName.toUpperCase())) continue;
 
         transformedRows.push({
             'ORDER NO': currentOrderNo, 'DATE': currentDate, 'PART NO.': partNo, 'PARTY NAME': currentPartyName,
@@ -161,10 +167,10 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
         if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
 
-        if (!row['DATE']) continue;
-        const currentDate = parseDMY(row['DATE']);
-        if (currentDate.getTime() === 0) continue;
+        // Skip rows with zero or negative balances to avoid completed latest order bug
+        if (getBalanceVal(row) <= 0) continue;
 
+        const currentDate = parseDMY(row['DATE']);
         let groupKey = partyName;
         const existingMax = maxGroupDateMap.get(groupKey);
         if (!existingMax || currentDate > existingMax) {
@@ -182,9 +188,10 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
 
-        if (!row['DATE']) continue;
+        // Skip rows with zero or negative balances to avoid completed latest order bug
+        if (getBalanceVal(row) <= 0) continue;
+
         const currentDate = parseDMY(row['DATE']);
-        if (currentDate.getTime() === 0) continue;
 
         let key;
         if (specialParty.includes(partyName)) {
@@ -221,8 +228,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         // Case 2: Keep Latest Date Orders Only - bypassed for specialParties
         if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
             const currentDate = parseDMY(row['DATE']);
-            if (currentDate.getTime() === 0) continue;
-            
             let groupKey = partyName;
             const maxDate = maxGroupDateMap.get(groupKey);
             if (maxDate && currentDate.getTime() === maxDate.getTime()) {
@@ -233,8 +238,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
         // Case 3: Default item-level deduplication
         const currentDate = parseDMY(row['DATE']);
-        if (currentDate.getTime() === 0) continue;
-        
         let key;
         if (specialParty.includes(partyName)) {
             const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
@@ -290,4 +293,146 @@ function getLevenshteinDistance(a, b) {
         }
     }
     return matrix[b.length][a.length];
+}
+
+async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDeduplicatedRows, enableExcelStyling) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileData);
+    
+    // 1. Rename the first sheet to "SIGFA SHEET" if it has a different name
+    if (workbook.worksheets.length > 0) {
+        workbook.worksheets[0].name = "SIGFA SHEET";
+    }
+    
+    // 2. Remove existing WORKING SHEET and WITHOUT DUPLICATE sheets if they exist
+    const oldWorking = workbook.getWorksheet('WORKING SHEET');
+    if (oldWorking) workbook.removeWorksheet(oldWorking.id);
+    
+    const oldDeduplicated = workbook.getWorksheet('WITHOUT DUPLICATE');
+    if (oldDeduplicated) workbook.removeWorksheet(oldDeduplicated.id);
+    
+    // 3. Add WORKING SHEET
+    const wsWorking = workbook.addWorksheet('WORKING SHEET');
+    if (transformedRows && transformedRows.length > 0) {
+        const headers = Object.keys(transformedRows[0]);
+        wsWorking.addRow(headers);
+        transformedRows.forEach(row => {
+            const vals = headers.map(h => row[h]);
+            wsWorking.addRow(vals);
+        });
+        
+        // Auto-fit columns for WORKING SHEET
+        headers.forEach((h, i) => {
+            let maxLen = h.length;
+            transformedRows.forEach(row => {
+                const val = row[h];
+                if (val !== undefined && val !== null) {
+                    maxLen = Math.max(maxLen, String(val).length);
+                }
+            });
+            const col = wsWorking.getColumn(i + 1);
+            col.width = maxLen + 4;
+        });
+    }
+    
+    // 4. Add WITHOUT DUPLICATE Sheet (with optional styling and freeze pane)
+    // To freeze row 1, set ySplit: 1
+    const wsDeduplicated = workbook.addWorksheet('WITHOUT DUPLICATE', {
+        views: [{ state: 'frozen', ySplit: 1, xSplit: 0 }]
+    });
+    
+    if (finalDeduplicatedRows && finalDeduplicatedRows.length > 0) {
+        const headers = Object.keys(finalDeduplicatedRows[0]);
+        wsDeduplicated.addRow(headers);
+        finalDeduplicatedRows.forEach(row => {
+            const vals = headers.map(h => row[h]);
+            wsDeduplicated.addRow(vals);
+        });
+        
+        // Set autoFilter range on the sheet headers
+        wsDeduplicated.autoFilter = {
+            from: { row: 1, column: 1 },
+            to: { row: finalDeduplicatedRows.length + 1, column: headers.length }
+        };
+        
+        // Apply Autofit columns
+        headers.forEach((h, i) => {
+            let maxLen = h.length;
+            finalDeduplicatedRows.forEach(row => {
+                const val = row[h];
+                if (val !== undefined && val !== null) {
+                    maxLen = Math.max(maxLen, String(val).length);
+                }
+            });
+            const col = wsDeduplicated.getColumn(i + 1);
+            col.width = maxLen + 4; // Add padding
+        });
+        
+        // Apply Styling if enabled
+        if (enableExcelStyling) {
+            // Header styling
+            const headerRow = wsDeduplicated.getRow(1);
+            headerRow.height = 24;
+            headerRow.eachCell((cell) => {
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FF1E3A8A' } // Dark blue
+                };
+                cell.font = {
+                    name: 'Segoe UI',
+                    size: 10,
+                    bold: true,
+                    color: { argb: 'FFFFFFFF' } // White text
+                };
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                cell.border = {
+                    top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                    left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                    bottom: { style: 'medium', color: { argb: 'FF1E3A8A' } },
+                    right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
+                };
+            });
+            
+            // Alignments & Borders for data rows
+            const colAlignments = headers.map(h => {
+                if (h === 'ORDER NO' || h === 'PART NO.' || h === 'DATE') return 'center';
+                if (h === 'ORDER QTY' || h === 'DESP QTY' || h === 'BALANCE' || h === 'RATE' || h === 'VALUE') return 'right';
+                return 'left';
+            });
+            
+            wsDeduplicated.eachRow((row, rowNumber) => {
+                if (rowNumber === 1) return; // Skip header
+                row.height = 20;
+                row.eachCell((cell, colNumber) => {
+                    const align = colAlignments[colNumber - 1] || 'left';
+                    cell.font = {
+                        name: 'Segoe UI',
+                        size: 9
+                    };
+                    cell.alignment = { vertical: 'middle', horizontal: align };
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+                        bottom: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                    };
+                });
+            });
+        } else {
+            // Apply freeze pane borders & Segoe UI font to header even if not styled
+            const headerRow = wsDeduplicated.getRow(1);
+            headerRow.eachCell((cell) => {
+                cell.font = {
+                    name: 'Segoe UI',
+                    size: 10,
+                    bold: true
+                };
+            });
+        }
+    }
+    
+    // Write to array buffer
+    const buf = await workbook.xlsx.writeBuffer();
+    return new Uint8Array(buf);
 }
