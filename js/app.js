@@ -912,7 +912,7 @@ async function initializeApp() {
         originalExcelButtonHTML = downloadExcelButton.innerHTML;
     }
     let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.6';
+    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.7';
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -1110,6 +1110,63 @@ const whatsNewContent = document.getElementById('whatsNewContent');
 
 let appUpdateState = 'idle'; 
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function fetchFullReleaseNotes(currentVersion, newVersion) {
+    const currentTag = currentVersion.startsWith('v') ? currentVersion : `v${currentVersion}`;
+    const newTag = newVersion.startsWith('v') ? newVersion : `v${newVersion}`;
+    
+    // Default fallback in case the API fetch fails or is rate limited
+    const fallbackLink = `<div class="text-xs text-gray-700 dark:text-gray-300">
+                              <strong>Full Changelog:</strong> <a href="https://github.com/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}" target="_blank" class="text-blue-500 hover:underline font-semibold">${currentTag}...${newTag}</a>
+                          </div>`;
+                          
+    if (whatsNewContent) {
+        whatsNewContent.innerHTML = `<p class="text-xs text-gray-500 italic animate-pulse">Loading release details...</p>`;
+    }
+    
+    fetch(`https://api.github.com/repos/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}`)
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            if (data && data.commits && Array.isArray(data.commits) && data.commits.length > 0) {
+                const commitMsgs = data.commits
+                    .map(c => c.commit.message.split('\n')[0].trim())
+                    .filter(msg => {
+                        if (!msg) return false;
+                        const msgUpper = msg.toUpperCase();
+                        return !msgUpper.startsWith('MERGE BRANCH') && !msgUpper.startsWith('MERGE PULL REQUEST');
+                    });
+                
+                if (commitMsgs.length > 0) {
+                    let notesHtml = '<ul class="list-disc list-inside space-y-1.5 mt-1 pr-1 max-h-40 overflow-y-auto font-sans text-gray-600 dark:text-gray-400 text-xs">';
+                    commitMsgs.forEach(msg => {
+                        notesHtml += `<li>${escapeHtml(msg)}</li>`;
+                    });
+                    notesHtml += '</ul>';
+                    
+                    notesHtml += `<div class="mt-3 pt-2 border-t border-blue-100 dark:border-blue-950/40 text-[10px] text-gray-400 flex justify-between items-center">
+                                      <span>Commits: ${commitMsgs.length}</span>
+                                      <a href="${data.html_url || `https://github.com/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}`}" target="_blank" class="text-blue-500 hover:underline font-semibold">View Comparison</a>
+                                  </div>`;
+                    whatsNewContent.innerHTML = notesHtml;
+                    return;
+                }
+            }
+            whatsNewContent.innerHTML = fallbackLink;
+        })
+        .catch(err => {
+            console.error("Failed to fetch commits compare history:", err);
+            whatsNewContent.innerHTML = fallbackLink;
+        });
+}
+
 if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdates) {
     checkForUpdatesBtn.addEventListener('click', () => {
         if (appUpdateState === 'idle') {
@@ -1149,19 +1206,12 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
             // Render Release Notes / What's New details with highlighted blue styling
             if (whatsNewVersion && whatsNewContent && whatsNewContainer) {
                 whatsNewVersion.textContent = info ? info.version : '';
-                let notes = 'No release notes provided.';
-                if (info) {
-                    if (info.releaseNotes) {
-                        if (Array.isArray(info.releaseNotes)) {
-                            notes = info.releaseNotes.map(n => n.note || n).join('\n');
-                        } else {
-                            notes = info.releaseNotes;
-                        }
-                    } else if (info.releaseName) {
-                        notes = info.releaseName;
-                    }
-                }
-                whatsNewContent.innerHTML = notes;
+                
+                // Fetch actual commits history comparison
+                const currentVersion = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : '3.30.7';
+                const newVersion = info ? info.version : '';
+                fetchFullReleaseNotes(currentVersion, newVersion);
+                
                 whatsNewContainer.className = "border border-blue-500 dark:border-blue-400 bg-blue-50/20 dark:bg-blue-950/10 rounded-lg p-3.5 flex flex-col gap-2 text-left mt-2";
                 whatsNewContainer.classList.remove('hidden');
                 
