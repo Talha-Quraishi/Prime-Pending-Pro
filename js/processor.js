@@ -167,9 +167,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
         if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
 
-        // Skip rows with zero or negative balances to avoid completed latest order bug
-        if (getBalanceVal(row) <= 0) continue;
-
         const currentDate = parseDMY(row['DATE']);
         let groupKey = partyName;
         const existingMax = maxGroupDateMap.get(groupKey);
@@ -187,9 +184,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
-
-        // Skip rows with zero or negative balances to avoid completed latest order bug
-        if (getBalanceVal(row) <= 0) continue;
 
         const currentDate = parseDMY(row['DATE']);
 
