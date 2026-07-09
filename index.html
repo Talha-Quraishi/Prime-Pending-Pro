@@ -18,13 +18,24 @@
     <script src="./libs/jspdf.plugin.autotable.min.js"></script>
     <script src="./libs/chart.umd.js"></script>
 
+    <!-- Google Fonts for Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
     <!-- App Stylesheet -->
     <link rel="stylesheet" href="./style.css">
 </head>
-<body class="flex flex-col h-screen overflow-hidden bg-[#f3f3f3] dark:bg-[#1f1f1f] text-gray-900 dark:text-gray-100 font-sans select-none">
+<body class="flex flex-col h-screen overflow-hidden bg-transparent text-gray-900 dark:text-gray-100 font-sans select-none relative">
+
+    <!-- Ambient Background Glow Blobs (Performance-optimized) -->
+    <div class="ambient-glow-container pointer-events-none fixed inset-0 overflow-hidden z-0">
+        <div class="glow-blob glow-blob-1"></div>
+        <div class="glow-blob glow-blob-2"></div>
+    </div>
 
     <!-- Title Bar -->
-    <div id="titleBar" class="flex items-center justify-between w-full bg-white dark:bg-[#202020] border-b border-gray-200 dark:border-neutral-800 pl-4 pr-0 h-10 z-50 flex-shrink-0 drag-region">
+    <div id="titleBar" class="flex items-center justify-between w-full bg-white/60 dark:bg-[#141a2a]/60 backdrop-blur-md border-b border-gray-200/50 dark:border-white/10 pl-4 pr-0 h-10 z-50 flex-shrink-0 drag-region">
         <div class="flex items-center gap-2 flex-1 h-full">
             <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12,0 C19,0 24,5 24,12 C24,19 19,24 12,24 C5,24 0,19 0,12 C0,5 5,0 12,0 Z" fill="url(#squircleGradient1)"/>
@@ -52,10 +63,10 @@
     </div>
 
     <!-- Main Layout Wrapper (Sidebar + Main Content Area) -->
-    <div class="flex flex-grow overflow-hidden relative">
+    <div class="flex flex-grow overflow-hidden relative z-10">
         
         <!-- Left Sidebar Navigation -->
-        <aside id="sidebar" class="w-60 bg-white dark:bg-[#202020] border-r border-gray-200 dark:border-neutral-800 flex flex-col justify-between flex-shrink-0 z-40 transition-[width] duration-150 ease-in-out">
+        <aside id="sidebar" class="w-60 bg-white/60 dark:bg-[#141a2a]/60 backdrop-blur-md border-r border-gray-200/50 dark:border-white/10 flex flex-col justify-between flex-shrink-0 z-40 transition-[width] duration-150 ease-in-out">
             <div class="flex flex-col gap-4 p-4">
                 <!-- App Branding & Hamburger -->
                 <div class="flex items-center gap-2 px-1 py-1 ms-hamburger-container">
@@ -118,7 +129,7 @@
         <!-- Main Content Area -->
         <main class="flex-grow flex flex-col overflow-hidden">
             <!-- Top Command Bar (Microsoft style) -->
-            <div class="h-12 bg-white dark:bg-[#202020] border-b border-gray-200 dark:border-neutral-800 px-6 flex items-center justify-between flex-shrink-0 z-30">
+            <div class="h-12 bg-white/60 dark:bg-[#141a2a]/60 backdrop-blur-md border-b border-gray-200/50 dark:border-white/10 px-6 flex items-center justify-between flex-shrink-0 z-30">
                 <h2 id="viewTitle" class="text-base font-semibold text-gray-800 dark:text-gray-200">Process File</h2>
                 <div class="flex items-center gap-3">
                     <span id="versionDisplay" class="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-mono"></span>
@@ -177,6 +188,16 @@
                                     <div>
                                         <span class="text-gray-500 dark:text-gray-400 text-xs">Format Status</span>
                                         <p class="font-bold text-sm text-green-600 dark:text-green-400" id="statFormat">SIGFA OK</p>
+                                    </div>
+                                </div>
+                                <!-- Schema Validation Details -->
+                                <div id="schemaValidationContainer" class="hidden border-t border-gray-200/50 dark:border-white/5 pt-3 mt-1 flex flex-col gap-2">
+                                    <span class="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider">Column Validation</span>
+                                    <div id="schemaChecklist" class="grid grid-cols-2 gap-y-1.5 gap-x-4 text-[11px] font-medium text-gray-600 dark:text-gray-400">
+                                        <!-- Will be populated dynamically -->
+                                    </div>
+                                    <div id="schemaAlert" class="hidden p-2 rounded bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 text-[10px] text-red-700 dark:text-red-300 leading-normal font-sans">
+                                        Required columns are missing or out of order. Please verify this is a raw SIGFA export sheet.
                                     </div>
                                 </div>
                                 <div id="scanningIndicator" class="hidden flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 py-1">

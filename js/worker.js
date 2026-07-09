@@ -37,11 +37,13 @@ self.onmessage = async function(e) {
                 }
             }
             const uniqueParties = [...scannedParties].sort();
+            const headersRow = headerIdx !== -1 ? rawData[headerIdx] : null;
             self.postMessage({
                 success: true,
                 action: 'scan',
                 rowCount: rawData.length,
-                uniqueParties
+                uniqueParties,
+                headers: headersRow
             });
             return;
         }
