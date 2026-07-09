@@ -260,6 +260,7 @@ function handleFile(file) {
                     if (result.success && result.action === 'scan') {
                         document.getElementById('statTotalRows').textContent = result.rowCount;
                         uniquePartiesList = result.uniqueParties;
+                        updatePartiesDatalist();
                         
                         // Run Schema Validator
                         validateExcelSchema(result.headers);
@@ -327,6 +328,7 @@ function handleFile(file) {
                     }
 
                     uniquePartiesList = [...scannedParties].sort();
+                    updatePartiesDatalist();
                     const fallbackHeaders = headerIdx !== -1 ? rawData[headerIdx] : null;
                     
                     // Run Schema Validator
@@ -436,6 +438,17 @@ function validateExcelSchema(headers) {
     return isValid;
 }
 
+function updatePartiesDatalist() {
+    const datalist = document.getElementById('scannedPartiesDatalist');
+    if (!datalist) return;
+    datalist.innerHTML = '';
+    uniquePartiesList.forEach(party => {
+        const option = document.createElement('option');
+        option.value = party;
+        datalist.appendChild(option);
+    });
+}
+
 function showToast(message, type = "success", ttl = 4000) {
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
@@ -482,6 +495,7 @@ function processFile() {
                 // Extract distinct parties and sort alphabetically
                 if (transformedData && transformedData.length > 0) {
                     uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
+                    updatePartiesDatalist();
                     renderPartyRulesList();
                 }
 
@@ -705,6 +719,7 @@ function resetUI() {
 
     // Reset party selector
     uniquePartiesList = [];
+    updatePartiesDatalist();
     document.getElementById('partySelectorCard').classList.add('hidden');
     if (partyRulesList) partyRulesList.innerHTML = `<p class="italic text-gray-400 dark:text-gray-500 text-center py-4">Scanning...</p>`;
     if (partySearch) partySearch.value = '';

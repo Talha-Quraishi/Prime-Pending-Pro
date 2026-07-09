@@ -497,7 +497,7 @@
                                         <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Keep All Orders (No Deduplication)</label>
                                         <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Orders for these parties will not be deduplicated.</p>
                                         <div class="chip-container" id="chipContainerExclusions">
-                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExclusions">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExclusions" list="scannedPartiesDatalist">
                                         </div>
                                     </div>
 
@@ -505,15 +505,15 @@
                                         <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Keep Latest Date Only</label>
                                         <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Selected parties retain only their most recent order.</p>
                                         <div class="chip-container" id="chipContainerLatest">
-                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputLatest">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputLatest" list="scannedPartiesDatalist">
                                         </div>
                                     </div>
 
                                     <div class="flex flex-col gap-1.5">
                                         <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Marka Grouping</label>
-                                        <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Parties whose orders are grouped and matched by Marka identifier.</p>
+                                        <p class="text-[10px] text-gray-400 dark:text-gray-400 -mt-1">Parties whose orders are grouped and matched by Marka identifier.</p>
                                         <div class="chip-container" id="chipContainerMarka">
-                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputMarka">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputMarka" list="scannedPartiesDatalist">
                                         </div>
                                     </div>
 
@@ -521,7 +521,7 @@
                                         <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Fully Excluded Parties</label>
                                         <p class="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">Selected parties will be completely omitted from all output reports.</p>
                                         <div class="chip-container" id="chipContainerExcluded">
-                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExcluded">
+                                            <input type="text" class="chip-input" placeholder="Type party name & press Enter..." id="chipInputExcluded" list="scannedPartiesDatalist">
                                         </div>
                                     </div>
                                 </div>
@@ -688,6 +688,9 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">Release to automatically scan and import your pending orders.</p>
         </div>
     </div>
+
+    <!-- Scanned Parties Autocomplete Datalist -->
+    <datalist id="scannedPartiesDatalist"></datalist>
 
     <!-- Modular Script Imports -->
     <script src="libs/lucide.min.js"></script>
