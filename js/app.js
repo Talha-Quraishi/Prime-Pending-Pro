@@ -224,13 +224,14 @@ function handleFile(file) {
         fileNameDisplay.textContent = `Selected: ${fileName}`;
         showToast(`File "${fileName}" selected successfully!`, 'success');
         originalFileName = fileName;
-        transformButton.disabled = false;
+        transformButton.disabled = true; // Wait for schema validation
         messageText.textContent = ''; showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
         fileInput.file = file;
 
         // Show metadata preview
         document.getElementById('previewEmptyState').classList.add('hidden');
         document.getElementById('fileStatsContainer').classList.remove('hidden');
+        document.getElementById('schemaValidationContainer').classList.add('hidden'); // Reset schema view
         document.getElementById('statFileName').textContent = file.name;
         document.getElementById('statFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
         document.getElementById('statTotalRows').textContent = 'Scanning...';
@@ -260,6 +261,9 @@ function handleFile(file) {
                         document.getElementById('statTotalRows').textContent = result.rowCount;
                         uniquePartiesList = result.uniqueParties;
                         
+                        // Run Schema Validator
+                        validateExcelSchema(result.headers);
+
                         // Hide scanning indicator, show party selector
                         scanIndicator.classList.add('hidden');
                         const partySelectorCard = document.getElementById('partySelectorCard');
@@ -323,6 +327,10 @@ function handleFile(file) {
                     }
 
                     uniquePartiesList = [...scannedParties].sort();
+                    const fallbackHeaders = headerIdx !== -1 ? rawData[headerIdx] : null;
+                    
+                    // Run Schema Validator
+                    validateExcelSchema(fallbackHeaders);
 
                     // Hide scanning indicator, show party selector
                     scanIndicator.classList.add('hidden');
@@ -339,12 +347,14 @@ function handleFile(file) {
                     console.error('Scan fallback failed:', scanErr);
                     scanIndicator.classList.add('hidden');
                     document.getElementById('statTotalRows').textContent = 'Scan failed';
+                    validateExcelSchema(null);
                 }
             }
         };
         scanReader.onerror = function() {
             scanIndicator.classList.add('hidden');
             document.getElementById('statTotalRows').textContent = 'Scan error';
+            validateExcelSchema(null);
         };
         scanReader.readAsArrayBuffer(file);
 
@@ -355,7 +365,75 @@ function handleFile(file) {
         document.getElementById('previewEmptyState').classList.remove('hidden');
         document.getElementById('fileStatsContainer').classList.add('hidden');
         document.getElementById('partySelectorCard').classList.add('hidden');
+        document.getElementById('schemaValidationContainer').classList.add('hidden');
     }
+}
+
+function validateExcelSchema(headers) {
+    const schemaValidationContainer = document.getElementById('schemaValidationContainer');
+    const schemaChecklist = document.getElementById('schemaChecklist');
+    const schemaAlert = document.getElementById('schemaAlert');
+    const statFormat = document.getElementById('statFormat');
+    
+    if (!schemaValidationContainer || !schemaChecklist || !schemaAlert || !statFormat) return true;
+    
+    schemaValidationContainer.classList.remove('hidden');
+    schemaChecklist.innerHTML = '';
+    
+    const requiredSchema = [
+        { index: 0, label: 'Order No', search: 'ORDER' },
+        { index: 2, label: 'Part No.', search: 'PART' },
+        { index: 3, label: 'Item Name', search: 'ITEM' },
+        { index: 4, label: 'Order Qty', search: 'ORDER' },
+        { index: 5, label: 'Desp Qty', search: 'DESP' },
+        { index: 6, label: 'Balance', search: 'BAL' },
+        { index: 7, label: 'Rate', search: 'RATE' },
+        { index: 8, label: 'Value', search: 'VAL' }
+    ];
+
+    let isValid = true;
+    
+    if (!headers || !Array.isArray(headers)) {
+        isValid = false;
+        requiredSchema.forEach(col => {
+            const item = document.createElement('div');
+            item.className = 'schema-item schema-error';
+            item.innerHTML = `<span class="schema-icon">❌</span><span>${col.label}: Missing</span>`;
+            schemaChecklist.appendChild(item);
+        });
+    } else {
+        requiredSchema.forEach(col => {
+            const headerVal = headers[col.index];
+            const headerStr = headerVal ? String(headerVal).trim().toUpperCase() : '';
+            const matches = headerStr.includes(col.search);
+            
+            const item = document.createElement('div');
+            if (matches) {
+                item.className = 'schema-item schema-ok';
+                item.innerHTML = `<span class="schema-icon">✔</span><span>${col.label}: OK</span>`;
+            } else {
+                isValid = false;
+                item.className = 'schema-item schema-error';
+                const dispVal = headerStr ? `Found "${headerVal.toString().substring(0, 10)}"` : 'Missing';
+                item.innerHTML = `<span class="schema-icon">❌</span><span>${col.label}: ${dispVal}</span>`;
+            }
+            schemaChecklist.appendChild(item);
+        });
+    }
+    
+    if (isValid) {
+        statFormat.textContent = 'SIGFA OK';
+        statFormat.className = 'font-bold text-sm text-green-600 dark:text-green-400';
+        schemaAlert.classList.add('hidden');
+        transformButton.disabled = false;
+    } else {
+        statFormat.textContent = 'SIGFA INVALID';
+        statFormat.className = 'font-bold text-sm text-red-500 dark:text-red-400';
+        schemaAlert.classList.remove('hidden');
+        transformButton.disabled = true;
+    }
+    
+    return isValid;
 }
 
 function showToast(message, type = "success", ttl = 4000) {
@@ -611,6 +689,7 @@ function resetUI() {
     document.getElementById('statTotalRows').textContent = '0';
 
     transformButton.disabled = true;
+    document.getElementById('schemaValidationContainer').classList.add('hidden');
     downloadContainer.classList.add('hidden'); downloadContainer.classList.remove('fade-in');
     resetButton.classList.add('hidden'); resetButton.classList.remove('fade-in');
     processingContainer.classList.add('hidden'); progressBar.style.width = '0%';
@@ -1039,6 +1118,13 @@ if (excelStylingToggle) {
     });
 }
 fileDropArea.addEventListener('click', (e) => { if (e.target === fileDropArea || fileDropArea.contains(e.target) && !browseButton.contains(e.target)) triggerFileSelection(); });
+fileDropArea.addEventListener('mousemove', (e) => {
+    const rect = fileDropArea.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    fileDropArea.style.setProperty('--mouse-x', `${x}px`);
+    fileDropArea.style.setProperty('--mouse-y', `${y}px`);
+});
 fileDropArea.addEventListener('dragover', (e) => { e.preventDefault(); fileDropArea.classList.add('drag-active', 'border-blue-500', 'dark:border-blue-400'); });
 fileDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); fileDropArea.classList.remove('drag-active', 'border-blue-500', 'dark:border-blue-400'); });
 fileDropArea.addEventListener('drop', (e) => { e.preventDefault(); fileDropArea.classList.remove('drag-active', 'border-blue-500', 'dark:border-blue-400'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });

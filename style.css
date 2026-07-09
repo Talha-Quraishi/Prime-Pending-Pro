@@ -1,15 +1,20 @@
 :root {
-    --microsoft-blue: #0078d4;
-    --microsoft-blue-hover: #106ebe;
-    --microsoft-blue-active: #005a9e;
-    --bg-light: #f3f3f3;
-    --bg-dark: #1f1f1f;
-    --content-bg-light: #ffffff;
-    --content-bg-dark: #2b2b2b;
-    --border-light: #e0e0e0;
-    --border-dark: #3b3b3b;
-    --text-light: #242424;
-    --text-dark: #f5f5f5;
+    --microsoft-blue: #3b82f6; /* Modern premium royal blue */
+    --microsoft-blue-hover: #2563eb;
+    --microsoft-blue-active: #1d4ed8;
+    --bg-light: #f4f6f9;
+    --bg-dark: #090d16; /* Deep state dark slate */
+    
+    /* Frosted glass backgrounds */
+    --content-bg-light: rgba(255, 255, 255, 0.65);
+    --content-bg-dark: rgba(20, 26, 42, 0.55);
+    
+    /* Frosted glass borders */
+    --border-light: rgba(229, 231, 235, 0.6);
+    --border-dark: rgba(255, 255, 255, 0.07);
+    
+    --text-light: #1f2937;
+    --text-dark: #f3f4f6;
 }
 
 html, body {
@@ -17,15 +22,76 @@ html, body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-    background-color: var(--bg-light);
+    font-family: 'Inter', "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+    background-color: transparent;
     color: var(--text-light);
-    transition: background-color 0.15s ease, color 0.15s ease;
+    transition: color 0.15s ease;
 }
 
 html.dark, html.dark body {
-    background-color: var(--bg-dark);
     color: var(--text-dark);
+}
+
+/* --- AMBIENT GLOW BACKDROP ENGINE (Smooth AF & GPU-Accelerated) --- */
+.ambient-glow-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-color: var(--bg-light);
+    transition: background-color 0.15s ease;
+}
+.dark .ambient-glow-container {
+    background-color: var(--bg-dark);
+}
+
+.glow-blob {
+    position: absolute;
+    width: 60vw;
+    height: 60vw;
+    border-radius: 50%;
+    opacity: 0.15;
+    filter: blur(120px);
+    mix-blend-mode: multiply;
+    will-change: transform;
+    pointer-events: none;
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+.dark .glow-blob {
+    opacity: 0.09;
+    mix-blend-mode: screen;
+}
+
+.glow-blob-1 {
+    top: -15vw;
+    left: -15vw;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.85) 0%, rgba(37, 99, 235, 0) 70%);
+    animation: rotateBlob1 50s linear infinite;
+}
+
+.glow-blob-2 {
+    bottom: -15vw;
+    right: -15vw;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.85) 0%, rgba(147, 51, 234, 0) 70%);
+    animation: rotateBlob2 55s linear infinite alternate;
+}
+
+@keyframes rotateBlob1 {
+    0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+    50% { transform: translate3d(6vw, 4vw, 0) rotate(180deg) scale(1.05); }
+    100% { transform: translate3d(0, 0, 0) rotate(360deg) scale(1); }
+}
+
+@keyframes rotateBlob2 {
+    0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1.05); }
+    50% { transform: translate3d(-6vw, -4vw, 0) rotate(-180deg) scale(0.95); }
+    100% { transform: translate3d(0, 0, 0) rotate(-360deg) scale(1.05); }
+}
+
+/* Headers typography */
+h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
+    font-family: 'Outfit', 'Inter', "Segoe UI", sans-serif;
 }
 
 /* Loaders & Animation */
@@ -46,18 +112,20 @@ html.dark, html.dark body {
 
 @keyframes toastFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Microsoft Card Component */
+/* Microsoft Card Component - Premium Frosted Glassmorphism */
 .ms-card {
     background: var(--content-bg-light);
     border: 1px solid var(--border-light);
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    transition: background-color 0.15s, border-color 0.15s;
+    border-radius: 8px; /* Slightly rounder and friendlier layout */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .dark .ms-card {
     background: var(--content-bg-dark);
     border: 1px solid var(--border-dark);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
 }
 
 /* Microsoft Tab Button Pattern */
@@ -241,10 +309,11 @@ html.dark, html.dark body {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.1s ease;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, color 0.15s ease;
     width: 100%;
     text-align: left;
     position: relative;
+    will-change: transform;
 }
 .dark .ms-nav-item {
     color: #adadad;
@@ -252,10 +321,14 @@ html.dark, html.dark body {
 .ms-nav-item:hover {
     background: rgba(0, 0, 0, 0.04);
     color: #111111;
+    transform: translate3d(4px, 0, 0);
 }
 .dark .ms-nav-item:hover {
     background: rgba(255, 255, 255, 0.04);
     color: #ffffff;
+}
+.ms-nav-item:active {
+    transform: translate3d(2px, 0, 0) scale(0.98);
 }
 .ms-nav-item.active {
     background: rgba(0, 120, 212, 0.08);
@@ -275,6 +348,7 @@ html.dark, html.dark body {
     width: 3px;
     background: var(--microsoft-blue);
     border-radius: 2px;
+    box-shadow: 0 0 8px var(--microsoft-blue);
 }
 
 /* Fluent Switch styles (Windows 11) */
@@ -502,15 +576,36 @@ html.dark, html.dark body {
     width: 60%;
 }
 
-/* 2. Dropzone Animations */
+/* 2. Dropzone Animations & Mouse Radial Glow (Option 4) */
+#fileDropArea {
+    position: relative;
+    overflow: hidden;
+}
+#fileDropArea::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle 120px at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(59, 130, 246, 0.08), transparent 80%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+#fileDropArea:hover::before {
+    opacity: 1;
+}
 .dropzone-animate {
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 .dropzone-animate.drag-active {
     border-color: var(--microsoft-blue) !important;
-    background-color: rgba(0, 120, 212, 0.05) !important;
-    transform: scale(1.02);
-    box-shadow: 0 8px 24px rgba(0, 120, 212, 0.12);
+    background-color: rgba(59, 130, 246, 0.06) !important;
+    transform: scale(1.015);
+    animation: pulseBorder 1.5s infinite alternate;
+}
+@keyframes pulseBorder {
+    0% { box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08), 0 0 0 1px rgba(59, 130, 246, 0.1); }
+    100% { box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15), 0 0 0 4px rgba(59, 130, 246, 0.3); }
 }
 .dropzone-animate.drag-active svg,
 .dropzone-animate.drag-active i {
@@ -521,6 +616,41 @@ html.dark, html.dark body {
 @keyframes bounceIcon {
     0% { transform: translate3d(0, 0, 0); }
     100% { transform: translate3d(0, -8px, 0); }
+}
+
+/* Premium Springy Transitions for Buttons (Option 6) */
+button, .btn, .ms-subtab, .tab-btn {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+button:hover:not(:disabled), .btn:hover:not(:disabled) {
+    transform: scale(1.02);
+}
+button:active:not(:disabled), .btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+/* Schema validation checklist styling */
+.schema-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    transition: color 0.2s ease;
+}
+.schema-icon {
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+.schema-ok {
+    color: #10b981; /* Emerald green */
+}
+.schema-error {
+    color: #ef4444; /* Red */
 }
 
 /* 3. Layout Animations (Standard, lag-free transitions) */
