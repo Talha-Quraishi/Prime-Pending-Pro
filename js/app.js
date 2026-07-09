@@ -1266,6 +1266,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
     checkForUpdatesBtn.addEventListener('click', () => {
         if (appUpdateState === 'idle') {
             appUpdateState = 'checking';
+            checkForUpdatesBtn.disabled = true; // Disable to prevent spam checking
             updateSpin.classList.remove('hidden');
             updateBtnText.textContent = 'Checking for updates...';
             updateStatusText.textContent = 'Contacting the release repository...';
@@ -1287,6 +1288,7 @@ if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdat
 
         if (status === 'checking') {
             appUpdateState = 'checking';
+            checkForUpdatesBtn.disabled = true;
             updateSpin.classList.remove('hidden');
             updateBtnText.textContent = 'Checking for updates...';
             updateStatusText.textContent = 'Checking release registry...';
