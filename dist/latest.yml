@@ -1,8 +1,8 @@
-version: 3.30.10
+version: 3.30.11
 files:
-  - url: Prime-Pending-Pro-Setup-3.30.10.exe
-    sha512: lXXjQA97X0UiV7Ujx3TA+dkKN3DS7U6E/GZ7S4wefGKKdK1PSHkGbn3mje1jtfHSaZxYO0ywGSWODwNfodN05w==
-    size: 85435746
-path: Prime-Pending-Pro-Setup-3.30.10.exe
-sha512: lXXjQA97X0UiV7Ujx3TA+dkKN3DS7U6E/GZ7S4wefGKKdK1PSHkGbn3mje1jtfHSaZxYO0ywGSWODwNfodN05w==
-releaseDate: '2026-07-09T17:05:11.161Z'
+  - url: Prime-Pending-Pro-Setup-3.30.11.exe
+    sha512: kFfwpqePPuYFakNl6LluMksDq4PrZ+4gHbHemzvk3jkTZ6X0PaqDEudIWZ2/dKb0yOk1harqK/cToltPDv8XGw==
+    size: 85435920
+path: Prime-Pending-Pro-Setup-3.30.11.exe
+sha512: kFfwpqePPuYFakNl6LluMksDq4PrZ+4gHbHemzvk3jkTZ6X0PaqDEudIWZ2/dKb0yOk1harqK/cToltPDv8XGw==
+releaseDate: '2026-07-09T17:09:17.002Z'
