@@ -18,17 +18,18 @@
 }
 
 html, body {
-    height: 100vh;
+    height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
     font-family: 'Inter', "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
-    background-color: transparent;
+    background-color: var(--bg-light);
     color: var(--text-light);
-    transition: color 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 html.dark, html.dark body {
+    background-color: var(--bg-dark);
     color: var(--text-dark);
 }
 
