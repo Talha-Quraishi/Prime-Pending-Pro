@@ -67,14 +67,12 @@ html.dark, html.dark body {
     top: -15vw;
     left: -15vw;
     background: radial-gradient(circle, rgba(59, 130, 246, 0.85) 0%, rgba(37, 99, 235, 0) 70%);
-    animation: rotateBlob1 50s linear infinite;
 }
 
 .glow-blob-2 {
     bottom: -15vw;
     right: -15vw;
     background: radial-gradient(circle, rgba(168, 85, 247, 0.85) 0%, rgba(147, 51, 234, 0) 70%);
-    animation: rotateBlob2 55s linear infinite alternate;
 }
 
 @keyframes rotateBlob1 {

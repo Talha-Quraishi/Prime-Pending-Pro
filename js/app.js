@@ -1133,10 +1133,16 @@ if (excelStylingToggle) {
     });
 }
 fileDropArea.addEventListener('click', (e) => { if (e.target === fileDropArea || fileDropArea.contains(e.target) && !browseButton.contains(e.target)) triggerFileSelection(); });
+let dropAreaRect = null;
+fileDropArea.addEventListener('mouseenter', () => {
+    dropAreaRect = fileDropArea.getBoundingClientRect();
+});
 fileDropArea.addEventListener('mousemove', (e) => {
-    const rect = fileDropArea.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    if (!dropAreaRect) {
+        dropAreaRect = fileDropArea.getBoundingClientRect();
+    }
+    const x = e.clientX - dropAreaRect.left;
+    const y = e.clientY - dropAreaRect.top;
     fileDropArea.style.setProperty('--mouse-x', `${x}px`);
     fileDropArea.style.setProperty('--mouse-y', `${y}px`);
 });
