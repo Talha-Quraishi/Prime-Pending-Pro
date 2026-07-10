@@ -1,5 +1,7 @@
 // --- RULES MANAGEMENT, SETTINGS PERSISTENCE & SPELLING ---
 
+let filterNewOnly = false;
+
 async function persistRulesToStorage(quiet = false) {
     if (!quiet) showToast("Saving configurations...", "warning");
     if (window.electronAPI) {
@@ -280,6 +282,28 @@ function renderPartyRulesList() {
         }
     });
 
+    // Calculate new/unconfigured parties
+    const unconfiguredCount = uniquePartiesList.filter(party => {
+        const partyUpper = party.toUpperCase();
+        return !excludedParties.includes(partyUpper) &&
+               !deduplicateParties.includes(partyUpper) &&
+               !specialParties.includes(partyUpper) &&
+               !fullyExcludedParties.includes(partyUpper);
+    }).length;
+
+    const countEl = document.getElementById('partyScanCount');
+    if (countEl) {
+        if (unconfiguredCount > 0) {
+            countEl.textContent = `${uniquePartiesList.length} parties (${unconfiguredCount} new)`;
+            countEl.classList.remove('bg-blue-100', 'text-blue-700', 'dark:bg-blue-900/40', 'dark:text-blue-300');
+            countEl.classList.add('bg-emerald-100', 'text-emerald-700', 'dark:bg-emerald-950/40', 'dark:text-emerald-300');
+        } else {
+            countEl.textContent = `${uniquePartiesList.length} parties`;
+            countEl.classList.remove('bg-emerald-100', 'text-emerald-700', 'dark:bg-emerald-950/40', 'dark:text-emerald-300');
+            countEl.classList.add('bg-blue-100', 'text-blue-700', 'dark:bg-blue-900/40', 'dark:text-blue-300');
+        }
+    }
+
     const query = partySearch.value.toLowerCase().trim();
     
     // Render sticky frozen header for checkboxes column mapping
@@ -300,13 +324,20 @@ function renderPartyRulesList() {
         const activeRule = partyRulesMap[partyUpper] || 'default';
 
         if (query && !partyUpper.toLowerCase().includes(query)) return;
+        if (filterNewOnly && activeRule !== 'default') return;
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer';
         itemDiv.dataset.party = partyUpper;
 
+        const isNew = activeRule === 'default';
+        const badgeHtml = isNew ? `<span class="text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0">NEW</span>` : '';
+
         itemDiv.innerHTML = `
-            <span class="font-medium text-gray-800 dark:text-gray-200 truncate flex-grow min-w-0 pr-2" title="${partyUpper}">${partyUpper}</span>
+            <div class="flex items-center min-w-0 flex-grow pr-2">
+                <span class="font-medium text-gray-800 dark:text-gray-200 truncate" title="${partyUpper}">${partyUpper}</span>
+                ${badgeHtml}
+            </div>
             <div class="flex items-center flex-shrink-0 mr-1 select-none">
                 <div class="w-[75px] flex justify-center">
                     <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Keep All (No deduplication)">
@@ -435,6 +466,21 @@ function toggleActiveRowRule(ruleNum) {
 document.addEventListener('DOMContentLoaded', () => {
     const listEl = document.getElementById('partyRulesList');
     const searchEl = document.getElementById('partySearch');
+    const filterNewBtn = document.getElementById('filterNewPartiesBtn');
+    
+    if (filterNewBtn) {
+        filterNewBtn.addEventListener('click', () => {
+            filterNewOnly = !filterNewOnly;
+            if (filterNewOnly) {
+                filterNewBtn.classList.add('border-emerald-500', 'bg-emerald-50/50', 'dark:bg-emerald-950/20', 'text-emerald-700', 'dark:text-emerald-400');
+                filterNewBtn.classList.remove('border-gray-300', 'dark:border-neutral-800', 'bg-white', 'dark:bg-[#1b1b1b]', 'text-gray-600', 'dark:text-gray-400');
+            } else {
+                filterNewBtn.classList.remove('border-emerald-500', 'bg-emerald-50/50', 'dark:bg-emerald-950/20', 'text-emerald-700', 'dark:text-emerald-400');
+                filterNewBtn.classList.add('border-gray-300', 'dark:border-neutral-800', 'bg-white', 'dark:bg-[#1b1b1b]', 'text-gray-600', 'dark:text-gray-400');
+            }
+            renderPartyRulesList();
+        });
+    }
     
     if (searchEl) {
         searchEl.addEventListener('keydown', (e) => {
