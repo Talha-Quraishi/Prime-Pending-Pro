@@ -1054,7 +1054,8 @@ async function initializeApp() {
                 specialParties: JSON.parse(localStorage.getItem('specialParties')),
                 fullyExcludedParties: JSON.parse(localStorage.getItem('fullyExcludedParties')),
                 partyMerges: JSON.parse(localStorage.getItem('partyMerges')),
-                enableExcelStyling: localStorage.getItem('enableExcelStyling') !== 'false'
+                enableExcelStyling: localStorage.getItem('enableExcelStyling') !== 'false',
+                performanceMode: localStorage.getItem('performanceMode') === 'true'
             };
         } catch (e) {
             config = {};
@@ -1111,6 +1112,13 @@ async function initializeApp() {
     if (excelStylingToggle) {
         excelStylingToggle.checked = config.enableExcelStyling !== false;
     }
+    const performanceModeToggle = document.getElementById('performanceModeToggle');
+    if (performanceModeToggle) {
+        performanceModeToggle.checked = config.performanceMode === true;
+        if (config.performanceMode === true) {
+            htmlElement.classList.add('low-spec');
+        }
+    }
 }
 
 // Bind UI event listeners
@@ -1130,6 +1138,17 @@ if (dataTableContainer) {
 if (excelStylingToggle) {
     excelStylingToggle.addEventListener('change', () => {
         persistConfigValue('enableExcelStyling', excelStylingToggle.checked);
+    });
+}
+const performanceModeToggle = document.getElementById('performanceModeToggle');
+if (performanceModeToggle) {
+    performanceModeToggle.addEventListener('change', () => {
+        persistConfigValue('performanceMode', performanceModeToggle.checked);
+        if (performanceModeToggle.checked) {
+            htmlElement.classList.add('low-spec');
+        } else {
+            htmlElement.classList.remove('low-spec');
+        }
     });
 }
 fileDropArea.addEventListener('click', (e) => { if (e.target === fileDropArea || fileDropArea.contains(e.target) && !browseButton.contains(e.target)) triggerFileSelection(); });

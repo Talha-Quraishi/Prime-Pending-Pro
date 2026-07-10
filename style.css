@@ -706,3 +706,47 @@ button:active:not(:disabled), .btn:active:not(:disabled) {
     width: 100% !important;
 }
 
+/* --- PERFORMANCE MODE (LOW-SPEC PC) OPTIMIZATIONS --- */
+html.low-spec {
+    /* Replace semi-transparent glass backgrounds with solid ones */
+    --content-bg-light: #ffffff;
+    --content-bg-dark: #121824;
+    --bg-light: #f3f4f6;
+    --bg-dark: #070a10;
+    --border-light: #e5e7eb;
+    --border-dark: #1f2937;
+}
+
+/* Hide ambient glow blobs entirely */
+html.low-spec .ambient-glow-container,
+html.low-spec .glow-blob,
+html.low-spec #fileDropArea::before {
+    display: none !important;
+}
+
+/* Disable all backdrop filters */
+html.low-spec .ms-card,
+html.low-spec #sidebar,
+html.low-spec #titleBar,
+html.low-spec .bg-white\/60,
+html.low-spec .backdrop-blur-md,
+html.low-spec [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Disable transitions and hover animations */
+html.low-spec *,
+html.low-spec *::before,
+html.low-spec *::after {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+}
+
+/* Disable non-loader animations */
+html.low-spec *:not(.loader):not(.animate-spin) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+}
+
+
