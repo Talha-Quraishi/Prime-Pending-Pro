@@ -758,27 +758,8 @@ function loadNextRowChunk() {
     if (loadedRowCount >= dashboardTableRows.length) return;
     const nextChunk = dashboardTableRows.slice(loadedRowCount, loadedRowCount + TABLE_CHUNK_SIZE);
     const fragment = document.createDocumentFragment();
-    const today = new Date();
     
-    nextChunk.forEach(rowData => {
-        const tr = document.createElement('tr');
-        tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
-        
-        let diffDays = 0;
-        if (rowData.dateObj.getTime() !== 0) {
-            const diffTime = Math.abs(today - rowData.dateObj);
-            diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        }
-
-        tr.innerHTML = `
-            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white truncate" title="${rowData.orderNo}">${rowData.orderNo}</td>
-            <td class="px-4 py-3">${rowData.dateRaw}</td>
-            <td class="px-4 py-3 text-red-500 font-semibold">${diffDays}</td>
-            <td class="px-4 py-3 truncate" title="${rowData.pName}">${rowData.pName}</td>
-            <td class="px-4 py-3 truncate" title="${rowData.iName}">${rowData.iName}</td>
-            <td class="px-4 py-3 text-right">${rowData.qty}</td>
-            <td class="px-4 py-3 text-right">₹${rowData.val.toLocaleString('en-IN')}</td>
-        `;
+    nextChunk.forEach(tr => {
         fragment.appendChild(tr);
     });
     
@@ -841,15 +822,26 @@ function updateDashboardUI(data) {
             else agingBuckets['90+']++;
         }
 
-        dashboardTableRows.push({
-            orderNo,
-            dateRaw: dateRaw || 'N/A',
-            dateObj,
-            pName,
-            iName,
-            qty,
-            val
-        });
+        const tr = document.createElement('tr');
+        tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
+        
+        let diffDays = 0;
+        if (dateObj.getTime() !== 0) {
+            const diffTime = Math.abs(today - dateObj);
+            diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        tr.innerHTML = `
+            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white truncate" title="${orderNo}">${orderNo}</td>
+            <td class="px-4 py-3">${dateRaw || 'N/A'}</td>
+            <td class="px-4 py-3 text-red-500 font-semibold">${diffDays}</td>
+            <td class="px-4 py-3 truncate" title="${pName}">${pName}</td>
+            <td class="px-4 py-3 truncate" title="${iName}">${iName}</td>
+            <td class="px-4 py-3 text-right">${qty}</td>
+            <td class="px-4 py-3 text-right">₹${val.toLocaleString('en-IN')}</td>
+        `;
+
+        dashboardTableRows.push(tr);
     });
 
     // Render first chunk of rows
