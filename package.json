@@ -1,6 +1,6 @@
 {
   "name": "prime-pending-pro",
-  "version": "3.30.14",
+  "version": "3.30.15",
   "description": "Restructure and analyze pending order Excel files",
   "author": "Talha",
   "main": "main.js",
