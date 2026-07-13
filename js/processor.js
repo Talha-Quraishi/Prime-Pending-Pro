@@ -161,9 +161,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
         
-        // Remove zeros and less than zeros
-        if (getBalanceVal(row) <= 0) continue;
-        
         // Special parties bypass List 2 to ensure they always get standard item-level deduplication per marka
         if (specialParty.includes(partyName)) continue;
 
@@ -187,9 +184,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
-        
-        // Remove zeros and less than zeros
-        if (getBalanceVal(row) <= 0) continue;
         
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
@@ -232,7 +226,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
         // Case 2: Keep Latest Date Orders Only - bypassed for specialParties
         if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
-            if (!row['DATE']) continue;
             const currentDate = parseDMY(row['DATE']);
             if (currentDate.getTime() === 0) continue;
             
@@ -245,7 +238,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         }
 
         // Case 3: Default item-level deduplication
-        if (!row['DATE']) continue;
         const currentDate = parseDMY(row['DATE']);
         if (currentDate.getTime() === 0) continue;
         
