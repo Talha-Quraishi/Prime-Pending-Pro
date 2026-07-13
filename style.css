@@ -1,4 +1,12 @@
 @font-face {
+  font-family: Linotte;
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  src: url('./libs/fonts/Linotte.ttf') format('truetype');
+}
+
+@font-face {
   font-family: Inter;
   font-style: normal;
   font-weight: 400;
@@ -90,7 +98,7 @@
 }
 
 html, body, button, input, select, textarea, span, div, p, a, label, li {
-    font-family: Inter, "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+    font-family: Linotte, Inter, "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
 }
 
 html, body {
@@ -165,7 +173,7 @@ html.dark, html.dark body {
 
 /* Headers typography */
 h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
-    font-family: Outfit, Inter, "Segoe UI", sans-serif !important;
+    font-family: Linotte, Outfit, Inter, "Segoe UI", sans-serif !important;
 }
 
 /* Loaders & Animation */
