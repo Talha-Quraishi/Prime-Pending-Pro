@@ -33,12 +33,15 @@
     --text-dark: #f3f4f6;
 }
 
+html, body, button, input, select, textarea, span, div, p, a, label, li {
+    font-family: Inter, "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+}
+
 html, body {
     height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
-    font-family: Inter, "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
     background-color: var(--bg-light);
     color: var(--text-light);
     transition: background-color 0.15s ease, color 0.15s ease;
@@ -106,7 +109,7 @@ html.dark, html.dark body {
 
 /* Headers typography */
 h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
-    font-family: Outfit, Inter, "Segoe UI", sans-serif;
+    font-family: Outfit, Inter, "Segoe UI", sans-serif !important;
 }
 
 /* Loaders & Animation */
