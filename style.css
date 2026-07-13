@@ -498,6 +498,12 @@ h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
     background-color: white;
 }
 
+/* Preferences Toggles Color Fix */
+#excelStylingToggle:checked + div,
+#performanceModeToggle:checked + div {
+    background-color: var(--microsoft-blue) !important;
+}
+
 /* Collapsed Sidebar overrides */
 #sidebar.collapsed {
     width: 48px;
