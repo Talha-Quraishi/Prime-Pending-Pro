@@ -488,7 +488,8 @@ h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
 .dark .fluent-slider:before {
     background-color: #adadad;
 }
-.fluent-switch input:checked + .fluent-slider {
+.fluent-switch input:checked + .fluent-slider,
+.dark .fluent-switch input:checked + .fluent-slider {
     background-color: var(--microsoft-blue);
     border-color: var(--microsoft-blue);
 }
