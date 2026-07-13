@@ -170,7 +170,10 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
         if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
 
+        if (!row['DATE']) continue;
         const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
+
         let groupKey = partyName;
         const existingMax = maxGroupDateMap.get(groupKey);
         if (!existingMax || currentDate > existingMax) {
@@ -191,7 +194,9 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
 
+        if (!row['DATE']) continue;
         const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
 
         let key;
         if (specialParty.includes(partyName)) {
@@ -227,7 +232,10 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
         // Case 2: Keep Latest Date Orders Only - bypassed for specialParties
         if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
+            if (!row['DATE']) continue;
             const currentDate = parseDMY(row['DATE']);
+            if (currentDate.getTime() === 0) continue;
+            
             let groupKey = partyName;
             const maxDate = maxGroupDateMap.get(groupKey);
             if (maxDate && currentDate.getTime() === maxDate.getTime()) {
@@ -237,7 +245,10 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         }
 
         // Case 3: Default item-level deduplication
+        if (!row['DATE']) continue;
         const currentDate = parseDMY(row['DATE']);
+        if (currentDate.getTime() === 0) continue;
+        
         let key;
         if (specialParty.includes(partyName)) {
             const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
