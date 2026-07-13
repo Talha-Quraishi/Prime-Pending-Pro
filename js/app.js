@@ -33,10 +33,7 @@ const fileInput = document.getElementById('fileInput');
 const fileDropArea = document.getElementById('fileDropArea');
 const browseButton = document.getElementById('browseButton');
 const transformButton = document.getElementById('transformButton');
-const downloadExcelButton = document.getElementById('downloadExcelButton'); 
-const pdfSigfaButton = document.getElementById('pdfSigfaButton');
-const pdfWorkingButton = document.getElementById('pdfWorkingButton');
-const pdfDeduplicatedButton = document.getElementById('pdfDeduplicatedButton');
+const downloadExcelButton = document.getElementById('downloadExcelButton');
 const resetButton = document.getElementById('resetButton');
 const fileNameDisplay = document.getElementById('fileName');
 const messageContainer = document.getElementById('messageContainer');
@@ -1163,9 +1160,6 @@ fileDropArea.addEventListener('drop', (e) => { e.preventDefault(); fileDropArea.
 fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 transformButton.addEventListener('click', processFile);
 downloadExcelButton.addEventListener('click', downloadTransformedFile);
-pdfSigfaButton.addEventListener('click', (e) => downloadPdfSigfaSheet(e.currentTarget));
-pdfWorkingButton.addEventListener('click', (e) => downloadPdfWorkingSheet(e.currentTarget));
-pdfDeduplicatedButton.addEventListener('click', (e) => downloadPdfDeduplicatedSheet(e.currentTarget));
 resetButton.addEventListener('click', resetUI);
 
 themeToggle.addEventListener('click', toggleTheme);
