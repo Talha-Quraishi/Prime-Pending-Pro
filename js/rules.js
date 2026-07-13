@@ -331,7 +331,7 @@ function renderPartyRulesList() {
         itemDiv.dataset.party = partyUpper;
 
         const isNew = activeRule === 'default';
-        const badgeHtml = isNew ? `<span class="text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0">NEW</span>` : '';
+        const badgeHtml = isNew ? `<span class="text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0">UNCHECKED</span>` : '';
 
         itemDiv.innerHTML = `
             <div class="flex items-center min-w-0 flex-grow pr-2">
