@@ -95,7 +95,20 @@
     
     --text-light: #1f2937;
     --text-dark: #f3f4f6;
+
+    /* Globally scale up Tailwind text utilities to compensate for Linotte's smaller size footprint */
+    --text-xs: 0.8125rem; /* ~13px instead of 12px */
+    --text-sm: 0.9375rem; /* ~15px instead of 14px */
+    --text-base: 1.0625rem; /* ~17px instead of 16px */
+    --text-lg: 1.1875rem; /* ~19px instead of 18px */
+    --text-2xl: 1.625rem; /* ~26px instead of 24px */
 }
+
+/* Custom font-size scaling adjustments for Linotte */
+.text-\[8px\] { font-size: 10px !important; }
+.text-\[9px\] { font-size: 11px !important; }
+.text-\[10px\] { font-size: 12px !important; }
+.text-\[11px\] { font-size: 13px !important; }
 
 html, body, button, input, select, textarea, span, div, p, a, label, li {
     font-family: Linotte, Inter, "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
@@ -524,7 +537,7 @@ h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
     align-items: center;
     gap: 10px;
     padding: 10px 14px;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 500;
     color: #606060;
     border-left: 3px solid transparent;
@@ -577,7 +590,7 @@ h1, h2, h3, h4, h5, h6, .font-semibold, .font-bold {
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 600;
     color: #4b5563;
     background: #f3f4f6;
