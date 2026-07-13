@@ -155,13 +155,14 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
     };
 
     // 1. Find max date for each groupKey in List 2 (Keep Latest Date Only)
-    // WARNING: Do NOT skip rows with balance <= 0 here. Completed/dispatched orders (balance <= 0) 
-    // must be processed to determine the true latest order date, preventing older pending orders from being kept.
     const maxGroupDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
+        
+        // Remove zeros and less than zeros
+        if (getBalanceVal(row) <= 0) continue;
         
         // Special parties bypass List 2 to ensure they always get standard item-level deduplication per marka
         if (specialParty.includes(partyName)) continue;
@@ -178,13 +179,14 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
     }
 
     // 2. Build the latest date map for the default item-level deduplication (for parties not in List 1 or List 2, OR in specialParties)
-    // WARNING: Do NOT skip rows with balance <= 0 here. Completed/dispatched orders (balance <= 0) 
-    // must be processed to determine the true latest order date, preventing older pending orders from being kept.
     const latestItemDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
+        
+        // Remove zeros and less than zeros
+        if (getBalanceVal(row) <= 0) continue;
         
         // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
         if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
