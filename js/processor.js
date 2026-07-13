@@ -154,9 +154,25 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         return safeParseFloat(row['BALANCE']);
     };
 
+    // Helper to extract Marka if present in ORDER NO (identified by a space)
+    const getMarkaInfo = (orderNo) => {
+        const rawOrder = String(orderNo || '').trim();
+        if (!rawOrder) return { hasMarka: false, marka: '' };
+
+        const spaceIdx = rawOrder.indexOf(' ');
+        if (spaceIdx !== -1) {
+            const markaPart = rawOrder.substring(spaceIdx + 1).trim();
+            if (markaPart) {
+                const cleanMarka = markaPart.replace(/\/+$/, '').trim().toUpperCase();
+                if (cleanMarka) {
+                    return { hasMarka: true, marka: cleanMarka };
+                }
+            }
+        }
+        return { hasMarka: false, marka: '' };
+    };
+
     // 1. Find max date for each groupKey in List 2 (Keep Latest Date Only)
-    // WARNING: Do NOT skip rows with balance <= 0 here. Completed/dispatched orders (balance <= 0) 
-    // must be processed to determine the true latest order date, preventing older pending orders from being kept.
     const maxGroupDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
@@ -169,6 +185,9 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
         if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
 
+        // Skip rows with zero or negative balances so that we only keep the latest date that has pending orders
+        if (getBalanceVal(row) <= 0) continue;
+
         const currentDate = parseDMY(row['DATE']);
         let groupKey = partyName;
         const existingMax = maxGroupDateMap.get(groupKey);
@@ -178,8 +197,6 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
     }
 
     // 2. Build the latest date map for the default item-level deduplication (for parties not in List 1 or List 2, OR in specialParties)
-    // WARNING: Do NOT skip rows with balance <= 0 here. Completed/dispatched orders (balance <= 0) 
-    // must be processed to determine the true latest order date, preventing older pending orders from being kept.
     const latestItemDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
@@ -193,10 +210,12 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
         let key;
         if (specialParty.includes(partyName)) {
-            const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
-            const orderParts = cleanOrder.split(/[\s/]+/); 
-            const marka = orderParts.length > 0 && orderParts[orderParts.length - 1] ? orderParts[orderParts.length - 1].toUpperCase() : 'UNKNOWN';
-            key = `${partyName}-${marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            const markaInfo = getMarkaInfo(row['ORDER NO']);
+            if (markaInfo.hasMarka) {
+                key = `${partyName}-${markaInfo.marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            } else {
+                key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            }
         } else {
             key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
         }
@@ -209,7 +228,11 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
     // 3. Filter rows into final list
     const finalData = [];
     const processedKeys = new Set();
-    for (const row of data) {
+    
+    // Iterate backwards (bottom-to-top) to ensure the last occurrence in the spreadsheet
+    // (representing the latest status) is kept, while maintaining original top-to-bottom order.
+    for (let i = data.length - 1; i >= 0; i--) {
+        const row = data[i];
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
@@ -219,7 +242,7 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
 
         // Case 1: Keep All Orders (No deduplication at all) - bypassed for specialParties
         if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) {
-            finalData.push(row);
+            finalData.unshift(row);
             continue;
         }
 
@@ -229,7 +252,7 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
             let groupKey = partyName;
             const maxDate = maxGroupDateMap.get(groupKey);
             if (maxDate && currentDate.getTime() === maxDate.getTime()) {
-                finalData.push(row);
+                finalData.unshift(row);
             }
             continue;
         }
@@ -238,17 +261,19 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         const currentDate = parseDMY(row['DATE']);
         let key;
         if (specialParty.includes(partyName)) {
-            const cleanOrder = String(row['ORDER NO'] || '').trim().replace(/\/+$/, '');
-            const orderParts = cleanOrder.split(/[\s/]+/); 
-            const marka = orderParts.length > 0 && orderParts[orderParts.length - 1] ? orderParts[orderParts.length - 1].toUpperCase() : 'UNKNOWN';
-            key = `${partyName}-${marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            const markaInfo = getMarkaInfo(row['ORDER NO']);
+            if (markaInfo.hasMarka) {
+                key = `${partyName}-${markaInfo.marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            } else {
+                key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+            }
         } else {
             key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
         }
         const latestDate = latestItemDateMap.get(key);
         if (latestDate && currentDate.getTime() === latestDate.getTime()) {
             if (!processedKeys.has(key)) {
-                finalData.push(row);
+                finalData.unshift(row);
                 processedKeys.add(key);
             }
         }

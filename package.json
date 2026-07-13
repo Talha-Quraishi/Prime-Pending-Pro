@@ -6,6 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node test_dedup.js",
     "dist": "electron-builder --windows"
   },
   "devDependencies": {
