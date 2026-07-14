@@ -203,8 +203,9 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
         
-        // Skip parties that are in List 1 or List 2, UNLESS they are in specialParties (Marka grouping)
-        if ((partiesToKeepAll.includes(partyName) || partiesToKeepLatestDate.includes(partyName)) && !specialParty.includes(partyName)) continue;
+        // Skip parties that are in List 1, UNLESS they are in specialParties (Marka grouping)
+        // Keep Latest (List 2) parties are not skipped so we can build the latestItemDateMap to check for newer dispatches
+        if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) continue;
 
         const currentDate = parseDMY(row['DATE']);
 
@@ -237,8 +238,24 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         const partyName = String(row['PARTY NAME']).trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
 
-        // Remove zeros and less than zeros
-        if (getBalanceVal(row) <= 0) continue;
+        // Track key for completed rows to invalidate any older pending duplicates above them
+        if (getBalanceVal(row) <= 0) {
+            if (!partiesToKeepAll.includes(partyName) || specialParty.includes(partyName)) {
+                let key;
+                if (specialParty.includes(partyName)) {
+                    const markaInfo = getMarkaInfo(row['ORDER NO']);
+                    if (markaInfo.hasMarka) {
+                        key = `${partyName}-${markaInfo.marka}-${row['ITEM NAME']}-${row['PART NO.']}`;
+                    } else {
+                        key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+                    }
+                } else {
+                    key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+                }
+                processedKeys.add(key);
+            }
+            continue;
+        }
 
         // Case 1: Keep All Orders (No deduplication at all) - bypassed for specialParties
         if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) {
@@ -250,10 +267,21 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
             const currentDate = parseDMY(row['DATE']);
             let groupKey = partyName;
-            const maxDate = maxGroupDateMap.get(groupKey);
-            if (maxDate && currentDate.getTime() === maxDate.getTime()) {
-                finalData.unshift(row);
-            }
+             const maxDate = maxGroupDateMap.get(groupKey);
+             if (maxDate && currentDate.getTime() === maxDate.getTime()) {
+                 const key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+                 const absoluteLatestDate = latestItemDateMap.get(key);
+                 
+                 // If there is a newer record showing a dispatch/completion (date > maxDate), do not keep this older item
+                 if (absoluteLatestDate && absoluteLatestDate > currentDate) {
+                     continue;
+                 }
+                 
+                 if (!processedKeys.has(key)) {
+                     finalData.unshift(row);
+                     processedKeys.add(key);
+                 }
+             }
             continue;
         }
 

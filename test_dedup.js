@@ -59,6 +59,52 @@ test("Case 2: Keep Latest - keeps only the latest date's pending orders", () => 
     assert.strictEqual(result[0]['ORDER NO'], 'O2'); // keeps only the latest date
 });
 
+test("Case 2: Keep Latest - deduplicates same-day orders for the same item", () => {
+    const data = [
+        { 'PARTY NAME': 'PARTY B', 'DATE': '15-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '22', 'ORDER QTY': '24' }, // top row
+        { 'PARTY NAME': 'PARTY B', 'DATE': '15-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '12', 'ORDER QTY': '20' }  // bottom row (latest status)
+    ];
+    
+    // List 2 (Keep Latest) contains 'PARTY B'
+    const result = findAndKeepLatestOrders(data, [], ['PARTY B'], [], []);
+    
+    assert.strictEqual(result[0]['ORDER QTY'], '20'); // kept the bottom-most row
+    assert.strictEqual(result[0]['BALANCE'], '12');
+});
+
+test("Case 2: Keep Latest - does not keep older item if a newer record shows it was dispatched/completed", () => {
+    const data = [
+        { 'PARTY NAME': 'PARTY B', 'DATE': '10-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '10' }, // older pending
+        { 'PARTY NAME': 'PARTY B', 'DATE': '15-05-2026', 'ITEM NAME': 'ITEM 2', 'PART NO.': 'P2', 'ORDER NO': 'O2', 'BALANCE': '5' },  // latest pending (maxDate is 15-05-2026)
+        { 'PARTY NAME': 'PARTY B', 'DATE': '15-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O3', 'BALANCE': '8' },  // pending on maxDate
+        { 'PARTY NAME': 'PARTY B', 'DATE': '20-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O4', 'BALANCE': '0' }   // newer record showing ITEM 1 is completed/dispatched
+    ];
+    
+    // List 2 (Keep Latest) contains 'PARTY B'
+    const result = findAndKeepLatestOrders(data, [], ['PARTY B'], [], []);
+    
+    // ITEM 2 on 15-05-2026 is kept because it is on the latest date and has no newer completed record.
+    // ITEM 1 on 15-05-2026 is NOT kept because there is a newer record on 20-05-2026 showing it was dispatched (balance 0).
+    // ITEM 1 on 10-05-2026 is NOT kept because it is before the latest pending date (15-05-2026).
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0]['ITEM NAME'], 'ITEM 2');
+    assert.strictEqual(result[0]['ORDER NO'], 'O2');
+});
+
+test("Case 2: Keep Latest - same-day fully dispatched order invalidates older pending order", () => {
+    const data = [
+        { 'PARTY NAME': 'PARTY B', 'DATE': '28-06-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '7' },  // older pending status on same day
+        { 'PARTY NAME': 'PARTY B', 'DATE': '28-06-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '0' }   // latest status on same day (fully dispatched)
+    ];
+    
+    // List 2 (Keep Latest) contains 'PARTY B'
+    const result = findAndKeepLatestOrders(data, [], ['PARTY B'], [], []);
+    
+    // Both are on the latest date (28-06-2026).
+    // The latest status is completed (balance 0), so the older pending status (balance 7) should NOT be kept.
+    assert.strictEqual(result.length, 0);
+});
+
 test("Case 2: Keep Latest with completed order fallback - does not miss parties", () => {
     const data = [
         { 'PARTY NAME': 'PARTY B', 'DATE': '01-05-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '10' },
@@ -83,6 +129,18 @@ test("Case 3: Default - keeps only the latest date's order for each item", () =>
     
     assert.strictEqual(result.length, 1);
     assert.strictEqual(result[0]['ORDER NO'], 'O2'); // keeps only the latest order
+});
+
+test("Case 3: Default - same-day fully dispatched order invalidates older pending order", () => {
+    const data = [
+        { 'PARTY NAME': 'PARTY C', 'DATE': '28-06-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '7' },  // older pending status on same day
+        { 'PARTY NAME': 'PARTY C', 'DATE': '28-06-2026', 'ITEM NAME': 'ITEM 1', 'PART NO.': 'P1', 'ORDER NO': 'O1', 'BALANCE': '0' }   // latest status on same day (fully dispatched)
+    ];
+    
+    // Default rule
+    const result = findAndKeepLatestOrders(data, [], [], [], []);
+    
+    assert.strictEqual(result.length, 0);
 });
 
 test("Case 3: Default - newer completed order invalidates older pending order (Lovely requirement)", () => {
