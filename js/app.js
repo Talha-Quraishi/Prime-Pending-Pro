@@ -8,13 +8,73 @@ function getLocalDateString(dateObj) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+// Helper to dynamically load external libraries asynchronously
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(script);
+    });
+}
+
 // Debounce helper for high-performance input filters
 function debounce(func, wait) {
     let timeout;
-    return function(...args) {
+    const debounced = function(...args) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
+    debounced.cancel = function() {
+        clearTimeout(timeout);
+    };
+    return debounced;
+}
+
+// Numeric count-up animation helper using requestAnimationFrame
+function animateValue(element, target, options = {}) {
+    if (!element) return;
+    const duration = options.duration || 600;
+    const format = options.format || ((val) => Math.floor(val).toLocaleString('en-IN'));
+    
+    let start = 0;
+    if (element.textContent) {
+        const numStr = element.textContent.replace(/[^0-9.-]/g, '');
+        const parsed = parseFloat(numStr);
+        if (!isNaN(parsed)) start = parsed;
+    }
+    
+    if (start === target) {
+        element.textContent = format(target);
+        return;
+    }
+    
+    const currentAnimId = Symbol('animId');
+    element._currentAnimId = currentAnimId;
+    
+    const startTime = performance.now();
+    
+    function update(currentTime) {
+        if (element._currentAnimId !== currentAnimId) return;
+        
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // easeOutQuad easing
+        const easeProgress = progress * (2 - progress);
+        
+        const currentValue = start + (target - start) * easeProgress;
+        element.textContent = format(currentValue);
+        
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        } else {
+            element.textContent = format(target);
+        }
+    }
+    
+    requestAnimationFrame(update);
 }
 
 function convertIpcBuffer(data) {
@@ -108,6 +168,22 @@ let chartAgingInstance = null;
 let originalJsonData = null;
 let transformedData = null;
 let finalDeduplicatedData = null; // Source of truth
+
+function setFinalDeduplicatedData(data) {
+    finalDeduplicatedData = data;
+    if (finalDeduplicatedData) {
+        finalDeduplicatedData.forEach(row => {
+            const pName = String(row['PARTY NAME'] || '');
+            const iName = String(row['ITEM NAME'] || '');
+            const partNo = String(row['PART NO.'] || '');
+            row._searchStr = (pName + ' ' + iName + ' ' + partNo).toLowerCase();
+            
+            const orderNo = String(row['ORDER NO'] || '').toUpperCase();
+            row._isDel = orderNo.startsWith('DEL');
+            row._isApr = orderNo.startsWith('APR');
+        });
+    }
+}
 let currentFilteredData = null;   // Active view
 let uniquePartiesList = [];       // Unique parties list from active file
 let dashboardTableRows = [];      // For lazy loading detailed order list
@@ -121,7 +197,8 @@ let isRestoringFromHistory = false;
 
 let animationFrameId = null;
 let originalExcelButtonHTML = '';
-let currentFilterType = 'ALL'; 
+let currentFilterType = 'ALL';
+let currentDiscount = 0; 
 
 // Deduplication Rules Arrays (Loaded from config.json or localStorage)
 let excludedParties = [];           // "Keep All Orders"
@@ -215,6 +292,11 @@ function showPartyRulesSkeleton() {
 
 // --- Core Functions ---
 function handleFile(file) {
+    if (typeof XLSX === 'undefined' || typeof ExcelJS === 'undefined') {
+        showToast("Initializing Excel engines, please wait a moment...", "warning");
+        setTimeout(() => handleFile(file), 500);
+        return;
+    }
     const validTypes = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
     if (validTypes.includes(file.type) || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
         const fileName = file.name;
@@ -282,10 +364,11 @@ function handleFile(file) {
                     scanWorker.terminate();
                     runScanFallback(fileData);
                 };
+                const transferBuffer = fileData.slice(0);
                 scanWorker.postMessage({
                     action: 'scan',
-                    fileData
-                });
+                    fileData: transferBuffer
+                }, [transferBuffer]);
             } catch (workerError) {
                 console.error('Failed to create scan worker, running main thread fallback:', workerError);
                 runScanFallback(fileData);
@@ -438,12 +521,7 @@ function validateExcelSchema(headers) {
 function updatePartiesDatalist() {
     const datalist = document.getElementById('scannedPartiesDatalist');
     if (!datalist) return;
-    datalist.innerHTML = '';
-    uniquePartiesList.forEach(party => {
-        const option = document.createElement('option');
-        option.value = party;
-        datalist.appendChild(option);
-    });
+    datalist.innerHTML = uniquePartiesList.map(party => `<option value="${party.replace(/"/g, '&quot;')}"></option>`).join('');
 }
 
 function showToast(message, type = "success", ttl = 4000) {
@@ -486,7 +564,7 @@ function processFile() {
                 updateProgressUI(100, "Transformation complete! Rendering interface...");
                 originalJsonData = res.originalJson;
                 transformedData = res.transformed;
-                finalDeduplicatedData = res.finalDeduplicated;
+                setFinalDeduplicatedData(res.finalDeduplicated);
                 processedWbout = res.wbout;
 
                 // Extract distinct parties and sort alphabetically
@@ -561,7 +639,7 @@ function processFile() {
                     partyMerges,
                     fullyExcludedParties,
                     enableExcelStyling
-                });
+                }, [fileData.buffer || fileData]);
             } catch (workerError) {
                 console.error("Failed to create Web Worker, running main thread fallback:", workerError);
                 runFallback();
@@ -571,7 +649,7 @@ function processFile() {
                 updateProgressUI(20, "Reading workbook and parsing sheets...");
                 setTimeout(() => {
                     try {
-                        const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
+                        const workbook = XLSX.read(fileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
                         const originalSheetName = workbook.SheetNames[0];
                         const worksheet = workbook.Sheets[originalSheetName];
                         
@@ -682,7 +760,7 @@ async function downloadTransformedFile() {
 
 function resetUI() {
     cancelAnimation(); fileInput.value = ''; fileInput.file = null;
-    originalJsonData = null; transformedData = null; finalDeduplicatedData = null; currentFilteredData = null;
+    originalJsonData = null; transformedData = null; setFinalDeduplicatedData(null); currentFilteredData = null;
     originalFileName = ''; processedWbout = null; uploadedFileData = null;
     fileNameDisplay.textContent = ''; messageText.textContent = '';
     simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
@@ -714,6 +792,15 @@ function resetUI() {
     if (chartPartiesInstance) chartPartiesInstance.destroy(); if (chartItemsInstance) chartItemsInstance.destroy(); if (chartTrendInstance) chartTrendInstance.destroy(); if (chartDistributionInstance) chartDistributionInstance.destroy(); if (chartAgingInstance) chartAgingInstance.destroy();
     searchInput.value = '';
 
+    // Reset KPI displays to baseline values
+    dashTotalValueDisplay.textContent = '₹0';
+    dashTotalQtyDisplay.textContent = '0';
+    dashUniqueItemsDisplay.textContent = '0';
+    dashUniquePartiesDisplay.textContent = '0';
+
+    // Reset price mode selection to MRP
+    setPriceMode('MRP');
+
     // Reset party selector
     uniquePartiesList = [];
     updatePartiesDatalist();
@@ -730,25 +817,24 @@ function setFilterType(type) {
     });
     const activeBtn = type === 'ALL' ? filterAll : (type === 'DEL' ? filterDel : filterApr);
     activeBtn.className = "px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
-    applyDashboardFilters();
+    applyDashboardFilters(true);
 }
 
-function applyDashboardFilters() {
+function applyDashboardFilters(immediateCharts = false) {
     if (!finalDeduplicatedData) return;
     const query = searchInput.value.toLowerCase().trim();
     currentFilteredData = finalDeduplicatedData.filter(row => {
-        const orderNo = String(row['ORDER NO'] || '').toUpperCase();
-        const partyName = String(row['PARTY NAME'] || '').toLowerCase();
-        const itemName = String(row['ITEM NAME'] || '').toLowerCase();
-        const partNo = String(row['PART NO.'] || '').toLowerCase();
         let matchesType = true;
-        if (currentFilterType === 'DEL') matchesType = orderNo.startsWith('DEL');
-        else if (currentFilterType === 'APR') matchesType = orderNo.startsWith('APR');
+        if (currentFilterType === 'DEL') matchesType = row._isDel;
+        else if (currentFilterType === 'APR') matchesType = row._isApr;
+        
         let matchesSearch = true;
-        if (query) matchesSearch = partyName.includes(query) || itemName.includes(query) || partNo.includes(query);
+        if (query) {
+            matchesSearch = row._searchStr && row._searchStr.includes(query);
+        }
         return matchesType && matchesSearch;
     });
-    updateDashboardUI(currentFilteredData);
+    updateDashboardUI(currentFilteredData, immediateCharts);
 }
 
 function loadNextRowChunk() {
@@ -756,7 +842,19 @@ function loadNextRowChunk() {
     const nextChunk = dashboardTableRows.slice(loadedRowCount, loadedRowCount + TABLE_CHUNK_SIZE);
     const fragment = document.createDocumentFragment();
     
-    nextChunk.forEach(tr => {
+    nextChunk.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
+        
+        tr.innerHTML = `
+            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white truncate" title="${item.orderNo}">${item.orderNo}</td>
+            <td class="px-4 py-3">${item.dateRaw || 'N/A'}</td>
+            <td class="px-4 py-3 text-red-500 font-semibold">${item.diffDays}</td>
+            <td class="px-4 py-3 truncate" title="${item.pName}">${item.pName}</td>
+            <td class="px-4 py-3 truncate" title="${item.iName}">${item.iName}</td>
+            <td class="px-4 py-3 text-right">${item.qty}</td>
+            <td class="px-4 py-3 text-right">₹${item.val.toLocaleString('en-IN')}</td>
+        `;
         fragment.appendChild(tr);
     });
     
@@ -764,7 +862,7 @@ function loadNextRowChunk() {
     loadedRowCount += nextChunk.length;
 }
 
-function updateDashboardUI(data) {
+function updateDashboardUI(data, immediateCharts = false) {
     if (!data) return;
     document.getElementById('dashboardEmptyState').classList.add('hidden');
     const dashSkeleton = document.getElementById('dashboardSkeletonState');
@@ -791,7 +889,7 @@ function updateDashboardUI(data) {
     if (data.length === 0) tableEmptyState.classList.remove('hidden'); else tableEmptyState.classList.add('hidden');
 
     data.forEach(row => {
-        const val = safeParseFloat(row['VALUE']);
+        const val = safeParseFloat(row['VALUE']) * (1 - currentDiscount);
         const qty = safeParseFloat(row['BALANCE']) || safeParseFloat(row['ORDER QTY']);
         const pName = row['PARTY NAME'] || 'Unknown';
         const iName = row['ITEM NAME'] || 'Unknown';
@@ -819,35 +917,26 @@ function updateDashboardUI(data) {
             else agingBuckets['90+']++;
         }
 
-        const tr = document.createElement('tr');
-        tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
-        
         let diffDays = 0;
         if (dateObj.getTime() !== 0) {
             const diffTime = Math.abs(today - dateObj);
             diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }
 
-        tr.innerHTML = `
-            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white truncate" title="${orderNo}">${orderNo}</td>
-            <td class="px-4 py-3">${dateRaw || 'N/A'}</td>
-            <td class="px-4 py-3 text-red-500 font-semibold">${diffDays}</td>
-            <td class="px-4 py-3 truncate" title="${pName}">${pName}</td>
-            <td class="px-4 py-3 truncate" title="${iName}">${iName}</td>
-            <td class="px-4 py-3 text-right">${qty}</td>
-            <td class="px-4 py-3 text-right">₹${val.toLocaleString('en-IN')}</td>
-        `;
-
-        dashboardTableRows.push(tr);
+        dashboardTableRows.push({
+            orderNo, dateRaw, diffDays, pName, iName, qty, val
+        });
     });
 
     // Render first chunk of rows
     loadNextRowChunk();
 
-    dashTotalValueDisplay.textContent = totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0, style: 'currency', currency: 'INR' });
-    dashTotalQtyDisplay.textContent = totalQty.toLocaleString('en-IN');
-    dashUniqueItemsDisplay.textContent = uniqueItems.size;
-    dashUniquePartiesDisplay.textContent = uniqueParties.size;
+    animateValue(dashTotalValueDisplay, totalValue, {
+        format: (val) => val.toLocaleString('en-IN', { maximumFractionDigits: 0, style: 'currency', currency: 'INR' })
+    });
+    animateValue(dashTotalQtyDisplay, totalQty);
+    animateValue(dashUniqueItemsDisplay, uniqueItems.size);
+    animateValue(dashUniquePartiesDisplay, uniqueParties.size);
 
     const sortedParties = Object.entries(partiesValueMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const sortedItems = Object.entries(itemsQtyMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -855,8 +944,17 @@ function updateDashboardUI(data) {
     const trendData = sortedDates.map(d => dateCountMap[d]);
     const trendLabels = sortedDates.map(d => { const p = d.split('-'); return `${p[2]}-${p[1]}`; });
 
-    renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
+    if (immediateCharts) {
+        debouncedRenderCharts.cancel();
+        renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
+    } else {
+        debouncedRenderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
+    }
 }
+
+const debouncedRenderCharts = debounce((sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets) => {
+    renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
+}, 350);
 
 function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
     const ctxParties = document.getElementById('chartParties').getContext('2d');
@@ -1108,6 +1206,21 @@ async function initializeApp() {
             htmlElement.classList.add('low-spec');
         }
     }
+    
+    // Initialize discount price mode UI listeners
+    setupDiscountListeners();
+
+    // Dynamically load heavy spreadsheet libraries in the background to ensure instant app window startup
+    setTimeout(() => {
+        Promise.all([
+            loadScript('./libs/xlsx.full.min.js'),
+            loadScript('./libs/exceljs.min.js')
+        ]).then(() => {
+            console.log("Excel libraries loaded dynamically in the background.");
+        }).catch(err => {
+            console.error("Error loading Excel libraries:", err);
+        });
+    }, 100);
 }
 
 // Bind UI event listeners
@@ -1428,7 +1541,7 @@ window.addEventListener('drop', (e) => {
 async function regenerateWorkbook() {
     if (!uploadedFileData || !transformedData || !finalDeduplicatedData) return;
     try {
-        const workbook = XLSX.read(uploadedFileData, { type: 'array' });
+        const workbook = XLSX.read(uploadedFileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
         const originalSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[originalSheetName];
         const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
@@ -1623,6 +1736,97 @@ if (historySearch) {
     historySearch.addEventListener('input', () => {
         loadHistoryTable();
     });
+}
+
+// --- BILLING PRICE MODE LOGIC ---
+
+let activePriceMode = 'MRP'; // Tracks current active mode: 'MRP', '61', '64', or 'custom'
+
+/**
+ * Update the global discount rate and refresh UI displays.
+ * @param {string} mode - The discount mode ('MRP', '61', '64', or 'custom')
+ * @param {number|null} customVal - Optional preset custom percentage (0-100)
+ */
+function setPriceMode(mode, customVal = null) {
+    activePriceMode = mode;
+    
+    // Update button visual states
+    const btnMRP = document.getElementById('btnPriceMRP');
+    const btn61 = document.getElementById('btnPrice61');
+    const btn64 = document.getElementById('btnPrice64');
+    const btnCustom = document.getElementById('btnPriceCustom');
+    const customInput = document.getElementById('inputPriceCustom');
+    
+    const inactiveClass = "px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
+    const activeClass = "px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
+    
+    if (btnMRP) btnMRP.className = inactiveClass;
+    if (btn61) btn61.className = inactiveClass;
+    if (btn64) btn64.className = inactiveClass;
+    if (btnCustom) btnCustom.className = inactiveClass;
+    
+    if (mode === 'MRP') {
+        if (btnMRP) btnMRP.className = activeClass;
+        if (customInput) customInput.classList.add('hidden');
+        currentDiscount = 0;
+    } else if (mode === '61') {
+        if (btn61) btn61.className = activeClass;
+        if (customInput) customInput.classList.add('hidden');
+        currentDiscount = 0.61;
+    } else if (mode === '64') {
+        if (btn64) btn64.className = activeClass;
+        if (customInput) customInput.classList.add('hidden');
+        currentDiscount = 0.64;
+    } else if (mode === 'custom') {
+        if (btnCustom) btnCustom.className = activeClass;
+        if (customInput) {
+            customInput.classList.remove('hidden');
+            if (customVal !== null) {
+                customInput.value = customVal;
+            } else if (!customInput.value) {
+                customInput.value = '50'; // Default custom discount
+            }
+            const percent = parseFloat(customInput.value) || 0;
+            currentDiscount = percent / 100;
+        }
+    }
+    
+    // Apply changes to live dashboard immediately for preset modes
+    applyDashboardFilters(true);
+}
+
+/**
+ * Sets up listeners for the price mode controls on the Insights Dashboard.
+ */
+function setupDiscountListeners() {
+    const btnMRP = document.getElementById('btnPriceMRP');
+    const btn61 = document.getElementById('btnPrice61');
+    const btn64 = document.getElementById('btnPrice64');
+    const btnCustom = document.getElementById('btnPriceCustom');
+    const customInput = document.getElementById('inputPriceCustom');
+    
+    if (btnMRP) btnMRP.addEventListener('click', () => setPriceMode('MRP'));
+    if (btn61) btn61.addEventListener('click', () => setPriceMode('61'));
+    if (btn64) btn64.addEventListener('click', () => setPriceMode('64'));
+    if (btnCustom) {
+        btnCustom.addEventListener('click', () => {
+            setPriceMode('custom');
+            if (customInput) {
+                customInput.focus();
+                customInput.select();
+            }
+        });
+    }
+    if (customInput) {
+        customInput.addEventListener('input', () => {
+            if (activePriceMode !== 'custom') return;
+            let val = parseFloat(customInput.value) || 0;
+            if (val < 0) val = 0;
+            if (val > 100) val = 100;
+            currentDiscount = val / 100;
+            applyDashboardFilters();
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);

@@ -82,6 +82,9 @@ function renderChipsInUI() {
             container.insertBefore(chip, input);
         });
     });
+
+    // Re-apply rules search filter
+    applyRulesSearchFilter();
 }
 
 function setupChipInputListeners() {
@@ -102,6 +105,21 @@ function setupChipInputListeners() {
         const addChipValue = () => {
             const val = input.value.trim().toUpperCase();
             if (!val) return;
+
+            // Conflict check
+            const existingType = partyRulesMap[val];
+            if (existingType && existingType !== 'default' && existingType !== type) {
+                let categoryName = 'another list';
+                if (existingType === 'keep-all') categoryName = 'Keep All Orders';
+                else if (existingType === 'keep-latest') categoryName = 'Keep Latest Date Only';
+                else if (existingType === 'marka') categoryName = 'Marka Grouping';
+                else if (existingType === 'exclude') categoryName = 'Fully Excluded';
+                
+                showToast(`Conflict: "${val}" is already configured under "${categoryName}"!`, "error");
+                input.value = '';
+                return;
+            }
+
             const currentArr = arrRef();
             if (!currentArr.includes(val)) {
                 currentArr.push(val);
@@ -509,4 +527,44 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    const rulesSearchEl = document.getElementById('rulesSearchInput');
+    if (rulesSearchEl) {
+        rulesSearchEl.addEventListener('input', () => {
+            applyRulesSearchFilter();
+        });
+    }
 });
+
+/**
+ * Filter configured rule chips across all 4 lists in the Settings pane
+ */
+function applyRulesSearchFilter() {
+    const searchInput = document.getElementById('rulesSearchInput');
+    if (!searchInput) return;
+    const query = searchInput.value.trim().toUpperCase();
+
+    const containers = [
+        'chipContainerExclusions',
+        'chipContainerLatest',
+        'chipContainerMarka',
+        'chipContainerExcluded'
+    ];
+
+    containers.forEach(id => {
+        const container = document.getElementById(id);
+        if (!container) return;
+
+        const chips = container.querySelectorAll('.chip');
+        chips.forEach(chip => {
+            const span = chip.querySelector('span');
+            if (!span) return;
+            const partyName = span.textContent.trim().toUpperCase();
+            if (!query || partyName.includes(query)) {
+                chip.style.display = ''; // Show
+            } else {
+                chip.style.display = 'none'; // Hide
+            }
+        });
+    });
+}

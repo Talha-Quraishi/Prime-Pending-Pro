@@ -18,16 +18,15 @@ ipcMain.handle('save-to-history', async (event, { filename, fileData, metadata }
     const filePath = path.join(historyDir, `${id}.xlsx`);
     
     // Save binary data
-    fs.writeFileSync(filePath, Buffer.from(fileData));
+    await fs.promises.writeFile(filePath, Buffer.from(fileData));
     
     // Update index.json
     let indexData = [];
-    if (fs.existsSync(historyIndexPath)) {
-      try {
-        indexData = JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
-      } catch (e) {
-        indexData = [];
-      }
+    try {
+      const indexContent = await fs.promises.readFile(historyIndexPath, 'utf8');
+      indexData = JSON.parse(indexContent);
+    } catch (e) {
+      indexData = [];
     }
     
     const record = {
@@ -39,7 +38,7 @@ ipcMain.handle('save-to-history', async (event, { filename, fileData, metadata }
     };
     
     indexData.unshift(record); // Prepend to show newest first
-    fs.writeFileSync(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    await fs.promises.writeFile(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
     return { success: true, record };
   } catch (e) {
     console.error(e);
@@ -48,45 +47,40 @@ ipcMain.handle('save-to-history', async (event, { filename, fileData, metadata }
 });
 
 ipcMain.handle('load-history-list', async () => {
-  if (fs.existsSync(historyIndexPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
-    } catch (e) {
-      return [];
-    }
+  try {
+    const indexContent = await fs.promises.readFile(historyIndexPath, 'utf8');
+    return JSON.parse(indexContent);
+  } catch (e) {
+    return [];
   }
-  return [];
 });
 
 ipcMain.handle('load-historical-file', async (event, id) => {
   const filePath = path.join(historyDir, `${id}.xlsx`);
-  if (fs.existsSync(filePath)) {
-    try {
-      return fs.readFileSync(filePath);
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+  try {
+    return await fs.promises.readFile(filePath);
+  } catch (e) {
+    console.error(e);
+    return null;
   }
-  return null;
 });
 
 ipcMain.handle('delete-from-history', async (event, id) => {
   try {
     const filePath = path.join(historyDir, `${id}.xlsx`);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (e) {
+      // Ignore if file doesn't exist
     }
     
-    if (fs.existsSync(historyIndexPath)) {
-      let indexData = [];
-      try {
-        indexData = JSON.parse(fs.readFileSync(historyIndexPath, 'utf8'));
-      } catch (e) {
-        indexData = [];
-      }
+    try {
+      const indexContent = await fs.promises.readFile(historyIndexPath, 'utf8');
+      let indexData = JSON.parse(indexContent);
       indexData = indexData.filter(item => item.id !== id);
-      fs.writeFileSync(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+      await fs.promises.writeFile(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    } catch (e) {
+      // Ignore index read/write issues
     }
     return true;
   } catch (e) {
@@ -95,20 +89,18 @@ ipcMain.handle('delete-from-history', async (event, id) => {
   }
 });
 
-ipcMain.handle('load-config', () => {
-  if (fs.existsSync(configPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch (e) {
-      return {};
-    }
+ipcMain.handle('load-config', async () => {
+  try {
+    const content = await fs.promises.readFile(configPath, 'utf8');
+    return JSON.parse(content);
+  } catch (e) {
+    return {};
   }
-  return {};
 });
 
-ipcMain.handle('save-config', (event, config) => {
+ipcMain.handle('save-config', async (event, config) => {
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
     return true;
   } catch (e) {
     console.error(e);

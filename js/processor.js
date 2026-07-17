@@ -445,7 +445,20 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
                 };
             });
             
-            // Alignments & Borders for data rows
+            // Reusable styling references to avoid allocating thousands of duplicate objects
+            const cellFont = { name: 'Segoe UI', size: 9 };
+            const cellBorder = {
+                top: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+                bottom: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+                left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+            };
+            const cellAlignments = {
+                left: { vertical: 'middle', horizontal: 'left' },
+                center: { vertical: 'middle', horizontal: 'center' },
+                right: { vertical: 'middle', horizontal: 'right' }
+            };
+
             const colAlignments = headers.map(h => {
                 if (h === 'ORDER NO' || h === 'PART NO.' || h === 'DATE') return 'center';
                 if (h === 'ORDER QTY' || h === 'DESP QTY' || h === 'BALANCE' || h === 'RATE' || h === 'VALUE') return 'right';
@@ -457,17 +470,9 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
                 row.height = 20;
                 row.eachCell((cell, colNumber) => {
                     const align = colAlignments[colNumber - 1] || 'left';
-                    cell.font = {
-                        name: 'Segoe UI',
-                        size: 9
-                    };
-                    cell.alignment = { vertical: 'middle', horizontal: align };
-                    cell.border = {
-                        top: { style: 'thin', color: { argb: 'FFF3F4F6' } },
-                        bottom: { style: 'thin', color: { argb: 'FFF3F4F6' } },
-                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
-                    };
+                    cell.font = cellFont;
+                    cell.alignment = cellAlignments[align];
+                    cell.border = cellBorder;
                 });
             });
         } else {
