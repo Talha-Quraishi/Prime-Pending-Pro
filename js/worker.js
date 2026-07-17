@@ -50,7 +50,7 @@ self.onmessage = async function(e) {
 
         // Read sheet for normal processing
         self.postMessage({ action: 'status', progress: 25, message: 'Reading Excel workbook and parsing sheets...' });
-        const workbook = XLSX.read(fileData, { type: 'array', cellStyles: true });
+        const workbook = XLSX.read(fileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
         const originalSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[originalSheetName];
         
@@ -79,7 +79,7 @@ self.onmessage = async function(e) {
             finalDeduplicated,
             wbout,
             originalSheetName
-        });
+        }, [wbout.buffer]);
     } catch(err) {
         self.postMessage({ success: false, error: err.message || err });
     }

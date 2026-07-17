@@ -7,8 +7,6 @@
     
     <!-- Localized Libraries for 100% Offline Capability -->
     <link rel="stylesheet" href="./libs/tailwind.compiled.css">
-    <script src="./libs/xlsx.full.min.js"></script>
-    <script src="./libs/exceljs.min.js"></script>
 
     <script src="./libs/chart.umd.js"></script>
 
@@ -297,10 +295,23 @@
                             <input type="text" id="searchInput" class="block w-full py-1.5 pl-9 pr-3 text-sm text-gray-900 border border-gray-300 rounded bg-white/80 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:placeholder-gray-500 dark:text-white focus:outline-none" placeholder="Search Item, Party or Part No..." data-lang-key-placeholder="searchPlaceholder">
                         </div>
                         
-                        <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50" id="filterTabs">
-                            <button id="filterAll" class="px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All</button>
-                            <button id="filterDel" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">DEL (Local)</button>
-                            <button id="filterApr" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">APR (Outstation)</button>
+                        <div class="flex flex-wrap items-center gap-4">
+                            <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50" id="filterTabs">
+                                <button id="filterAll" class="px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All</button>
+                                <button id="filterDel" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">DEL (Local)</button>
+                                <button id="filterApr" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">APR (Outstation)</button>
+                            </div>
+
+                            <div class="flex items-center gap-1.5" id="discountDashboardContainer">
+                                <span class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Price Mode:</span>
+                                <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50">
+                                    <button id="btnPriceMRP" class="px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">MRP</button>
+                                    <button id="btnPrice61" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Less 61%</button>
+                                    <button id="btnPrice64" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Less 64%</button>
+                                    <button id="btnPriceCustom" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Custom</button>
+                                </div>
+                                <input type="number" id="inputPriceCustom" min="0" max="100" class="hidden w-12 p-1 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white text-center" placeholder="%">
+                            </div>
                         </div>
                     </div>
 
@@ -491,6 +502,11 @@
                             <div id="settingsPaneRules" class="settings-pane hidden flex flex-col gap-4">
                                 <div class="ms-card springy-hover p-5 flex flex-col gap-4">
                                     <h3 class="text-sm font-bold border-b border-gray-200 dark:border-gray-800 pb-2 text-gray-800 dark:text-gray-200 uppercase tracking-wider">Deduplication Rules</h3>
+                                    
+                                    <!-- Search configured rules input -->
+                                    <div class="relative w-full mb-1">
+                                        <input type="text" id="rulesSearchInput" class="w-full p-2 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Search configured rules...">
+                                    </div>
                                     
                                     <div class="flex flex-col gap-1.5">
                                         <label class="text-xs font-bold text-gray-500 dark:text-neutral-300 uppercase tracking-wider">Keep All Orders (No Deduplication)</label>
