@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const historyDir = path.join(app.getPath('userData'), 'history');
@@ -214,16 +215,59 @@ autoUpdater.on('update-available', (info) => {
   }
 });
 
-autoUpdater.on('update-not-available', (info) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'not-available');
+function compareSemver(v1, v2) {
+  const p1 = (v1 || '').replace(/^v/, '').split('.').map(Number);
+  const p2 = (v2 || '').replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
   }
+  return 0;
+}
+
+function checkGitHubTagsFallback() {
+  const currentVersion = app.getVersion();
+  const options = {
+    hostname: 'api.github.com',
+    path: '/repos/Talha-Quraishi/Prime-Pending-Pro/tags',
+    headers: { 'User-Agent': 'Prime-Pending-Pro-App' }
+  };
+  
+  https.get(options, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      try {
+        const tags = JSON.parse(data);
+        if (Array.isArray(tags) && tags.length > 0) {
+          const latestTag = tags[0].name.replace(/^v/, '');
+          if (compareSemver(latestTag, currentVersion) > 0) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('update-message', 'available', { version: latestTag });
+            }
+            return;
+          }
+        }
+      } catch (e) {}
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-message', 'not-available');
+      }
+    });
+  }).on('error', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-message', 'not-available');
+    }
+  });
+}
+
+autoUpdater.on('update-not-available', (info) => {
+  checkGitHubTagsFallback();
 });
 
 autoUpdater.on('error', (err) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'error', err == null ? 'unknown' : err.message);
-  }
+  checkGitHubTagsFallback();
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
