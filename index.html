@@ -267,13 +267,17 @@
                                 <strong>❌</strong> Exclude
                             </p>
 
-                            <!-- Search filter -->
+                            <!-- Search & Rule filter -->
                             <div class="flex items-center gap-2">
                                 <input type="text" id="partySearch" class="w-full p-2 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Search scanned parties...">
-                                <button type="button" id="filterNewPartiesBtn" class="flex-shrink-0 px-2.5 py-2 text-[10px] font-semibold border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-neutral-800/80 transition-all select-none flex items-center gap-1.5" title="Filter to show only unchecked/unconfigured parties">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                    <span>Unchecked Only</span>
-                                </button>
+                                <select id="scannedPartyRuleFilter" class="px-2.5 py-2 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium">
+                                    <option value="ALL">All Rule Types</option>
+                                    <option value="default">🟢 Unchecked Only</option>
+                                    <option value="keep-all">📋 Keep All</option>
+                                    <option value="keep-latest">🔄 Keep Latest</option>
+                                    <option value="marka">🏷️ Marka</option>
+                                    <option value="exclude">❌ Exclude</option>
+                                </select>
                             </div>
 
                             <!-- Party Rules List -->
@@ -287,28 +291,40 @@
                 <!-- View 2: Data Insights Dashboard -->
                 <div id="viewInsightsContainer" class="tab-pane-transition hidden h-full flex flex-col overflow-hidden">
                     <!-- Filter Bar at top of dashboard (fixed height) -->
-                    <div class="px-6 py-3 bg-white/20 dark:bg-black/10 border-b border-gray-200/50 dark:border-white/5 flex flex-col sm:flex-row gap-4 items-center justify-between flex-shrink-0">
-                        <div class="relative w-full sm:w-72">
+                    <div class="px-6 py-3 bg-white/20 dark:bg-black/10 border-b border-gray-200/50 dark:border-white/5 flex flex-col lg:flex-row gap-3 items-center justify-between flex-shrink-0">
+                        <div class="relative w-full lg:w-64">
                             <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                 <i data-lucide="search" class="w-4 h-4 text-gray-400"></i>
                             </span>
                             <input type="text" id="searchInput" class="block w-full py-1.5 pl-9 pr-3 text-sm text-gray-900 border border-gray-300 rounded bg-white/80 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:placeholder-gray-500 dark:text-white focus:outline-none" placeholder="Search Item, Party or Part No..." data-lang-key-placeholder="searchPlaceholder">
                         </div>
                         
-                        <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
+                            <!-- Location Filters -->
                             <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50" id="filterTabs">
-                                <button id="filterAll" class="px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All</button>
-                                <button id="filterDel" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">DEL (Local)</button>
-                                <button id="filterApr" class="px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">APR (Outstation)</button>
+                                <button id="filterAll" class="px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All Loc</button>
+                                <button id="filterDel" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">DEL (Local)</button>
+                                <button id="filterApr" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">APR (Outstation)</button>
                             </div>
 
+                            <!-- Rule Category Filters -->
+                            <div class="flex flex-wrap bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50" id="ruleFilterTabs">
+                                <button id="btnRuleFilterAll" class="px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">All Rules</button>
+                                <button id="btnRuleFilterKeepAll" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">📋 Keep All</button>
+                                <button id="btnRuleFilterKeepLatest" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">🔄 Keep Latest</button>
+                                <button id="btnRuleFilterMarka" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">🏷️ Marka</button>
+                                <button id="btnRuleFilterExcluded" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">❌ Excluded</button>
+                                <button id="btnRuleFilterDefault" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">⚙️ Default</button>
+                            </div>
+
+                            <!-- Price Mode -->
                             <div class="flex items-center gap-1.5" id="discountDashboardContainer">
-                                <span class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Price Mode:</span>
+                                <span class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Price:</span>
                                 <div class="flex bg-gray-200/50 dark:bg-gray-800/80 p-0.5 rounded border border-gray-200/30 dark:border-gray-700/50">
-                                    <button id="btnPriceMRP" class="px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">MRP</button>
-                                    <button id="btnPrice61" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Less 61%</button>
-                                    <button id="btnPrice64" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Less 64%</button>
-                                    <button id="btnPriceCustom" class="px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Custom</button>
+                                    <button id="btnPriceMRP" class="px-2 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all">MRP</button>
+                                    <button id="btnPrice61" class="px-2 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">-61%</button>
+                                    <button id="btnPrice64" class="px-2 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">-64%</button>
+                                    <button id="btnPriceCustom" class="px-2 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all">Custom</button>
                                 </div>
                                 <input type="number" id="inputPriceCustom" min="0" max="100" class="hidden w-12 p-1 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white text-center" placeholder="%">
                             </div>

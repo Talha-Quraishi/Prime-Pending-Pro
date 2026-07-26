@@ -810,13 +810,47 @@ function resetUI() {
 }
 
 // --- DASHBOARD & FILTER LOGIC ---
+let currentRuleFilterType = 'ALL';
+
+function getPartyRuleCategory(partyName) {
+    if (!partyName) return 'DEFAULT';
+    const partyUpper = String(partyName).toUpperCase().trim();
+    if (excludedParties && excludedParties.includes(partyUpper)) return 'KEEP_ALL';
+    if (deduplicateParties && deduplicateParties.includes(partyUpper)) return 'KEEP_LATEST';
+    if (specialParties && specialParties.includes(partyUpper)) return 'MARKA';
+    if (fullyExcludedParties && fullyExcludedParties.includes(partyUpper)) return 'EXCLUDED';
+    return 'DEFAULT';
+}
+
 function setFilterType(type) {
     currentFilterType = type;
     [filterAll, filterDel, filterApr].forEach(btn => {
-        btn.className = "px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
+        if (btn) btn.className = "px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
     });
     const activeBtn = type === 'ALL' ? filterAll : (type === 'DEL' ? filterDel : filterApr);
-    activeBtn.className = "px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
+    if (activeBtn) activeBtn.className = "px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
+    applyDashboardFilters(true);
+}
+
+function setRuleFilterType(ruleType) {
+    currentRuleFilterType = ruleType;
+    const ruleBtns = [
+        { id: 'btnRuleFilterAll', type: 'ALL' },
+        { id: 'btnRuleFilterKeepAll', type: 'KEEP_ALL' },
+        { id: 'btnRuleFilterKeepLatest', type: 'KEEP_LATEST' },
+        { id: 'btnRuleFilterMarka', type: 'MARKA' },
+        { id: 'btnRuleFilterExcluded', type: 'EXCLUDED' },
+        { id: 'btnRuleFilterDefault', type: 'DEFAULT' }
+    ];
+    ruleBtns.forEach(b => {
+        const el = document.getElementById(b.id);
+        if (!el) return;
+        if (b.type === currentRuleFilterType) {
+            el.className = "px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
+        } else {
+            el.className = "px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
+        }
+    });
     applyDashboardFilters(true);
 }
 
@@ -827,12 +861,18 @@ function applyDashboardFilters(immediateCharts = false) {
         let matchesType = true;
         if (currentFilterType === 'DEL') matchesType = row._isDel;
         else if (currentFilterType === 'APR') matchesType = row._isApr;
+
+        let matchesRule = true;
+        if (currentRuleFilterType !== 'ALL') {
+            const category = getPartyRuleCategory(row['PARTY NAME']);
+            matchesRule = (category === currentRuleFilterType);
+        }
         
         let matchesSearch = true;
         if (query) {
             matchesSearch = row._searchStr && row._searchStr.includes(query);
         }
-        return matchesType && matchesSearch;
+        return matchesType && matchesRule && matchesSearch;
     });
     updateDashboardUI(currentFilteredData, immediateCharts);
 }
@@ -1296,6 +1336,21 @@ searchInput.addEventListener('input', debounce(applyDashboardFilters, 150));
 filterAll.addEventListener('click', () => setFilterType('ALL'));
 filterDel.addEventListener('click', () => setFilterType('DEL'));
 filterApr.addEventListener('click', () => setFilterType('APR'));
+
+// Bind Dashboard Rule Filter buttons
+const btnRuleFilterAll = document.getElementById('btnRuleFilterAll');
+const btnRuleFilterKeepAll = document.getElementById('btnRuleFilterKeepAll');
+const btnRuleFilterKeepLatest = document.getElementById('btnRuleFilterKeepLatest');
+const btnRuleFilterMarka = document.getElementById('btnRuleFilterMarka');
+const btnRuleFilterExcluded = document.getElementById('btnRuleFilterExcluded');
+const btnRuleFilterDefault = document.getElementById('btnRuleFilterDefault');
+
+if (btnRuleFilterAll) btnRuleFilterAll.addEventListener('click', () => setRuleFilterType('ALL'));
+if (btnRuleFilterKeepAll) btnRuleFilterKeepAll.addEventListener('click', () => setRuleFilterType('KEEP_ALL'));
+if (btnRuleFilterKeepLatest) btnRuleFilterKeepLatest.addEventListener('click', () => setRuleFilterType('KEEP_LATEST'));
+if (btnRuleFilterMarka) btnRuleFilterMarka.addEventListener('click', () => setRuleFilterType('MARKA'));
+if (btnRuleFilterExcluded) btnRuleFilterExcluded.addEventListener('click', () => setRuleFilterType('EXCLUDED'));
+if (btnRuleFilterDefault) btnRuleFilterDefault.addEventListener('click', () => setRuleFilterType('DEFAULT'));
 
 // Settings Sub-Tabs Switching
 const settingsNavItems = document.querySelectorAll('.settings-nav-item');

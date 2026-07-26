@@ -323,6 +323,8 @@ function renderPartyRulesList() {
     }
 
     const query = partySearch.value.toLowerCase().trim();
+    const scannedPartyRuleFilterEl = document.getElementById('scannedPartyRuleFilter');
+    const selectedRuleFilter = scannedPartyRuleFilterEl ? scannedPartyRuleFilterEl.value : 'ALL';
     
     // Render sticky frozen header for checkboxes column mapping
     partyRulesList.innerHTML = `
@@ -343,6 +345,7 @@ function renderPartyRulesList() {
 
         if (query && !partyUpper.toLowerCase().includes(query)) return;
         if (filterNewOnly && activeRule !== 'default') return;
+        if (selectedRuleFilter !== 'ALL' && activeRule !== selectedRuleFilter) return;
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer';
@@ -484,21 +487,6 @@ function toggleActiveRowRule(ruleNum) {
 document.addEventListener('DOMContentLoaded', () => {
     const listEl = document.getElementById('partyRulesList');
     const searchEl = document.getElementById('partySearch');
-    const filterNewBtn = document.getElementById('filterNewPartiesBtn');
-    
-    if (filterNewBtn) {
-        filterNewBtn.addEventListener('click', () => {
-            filterNewOnly = !filterNewOnly;
-            if (filterNewOnly) {
-                filterNewBtn.classList.add('border-emerald-500', 'bg-emerald-50/50', 'dark:bg-emerald-950/20', 'text-emerald-700', 'dark:text-emerald-400');
-                filterNewBtn.classList.remove('border-gray-300', 'dark:border-neutral-800', 'bg-white', 'dark:bg-[#1b1b1b]', 'text-gray-600', 'dark:text-gray-400');
-            } else {
-                filterNewBtn.classList.remove('border-emerald-500', 'bg-emerald-50/50', 'dark:bg-emerald-950/20', 'text-emerald-700', 'dark:text-emerald-400');
-                filterNewBtn.classList.add('border-gray-300', 'dark:border-neutral-800', 'bg-white', 'dark:bg-[#1b1b1b]', 'text-gray-600', 'dark:text-gray-400');
-            }
-            renderPartyRulesList();
-        });
-    }
     
     if (searchEl) {
         searchEl.addEventListener('keydown', (e) => {
@@ -525,6 +513,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 toggleActiveRowRule(parseInt(e.key));
             }
+        });
+    }
+
+    const scannedPartyRuleFilterEl = document.getElementById('scannedPartyRuleFilter');
+    if (scannedPartyRuleFilterEl) {
+        scannedPartyRuleFilterEl.addEventListener('change', () => {
+            renderPartyRulesList();
         });
     }
 
