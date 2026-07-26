@@ -239,6 +239,17 @@ function switchMainView(viewName) {
         }
     });
     
+    if (viewName === 'insights') {
+        requestAnimationFrame(() => {
+            [chartPartiesInstance, chartItemsInstance, chartTrendInstance, chartDistributionInstance, chartAgingInstance].forEach(chart => {
+                if (chart) {
+                    chart.resize();
+                    chart.update();
+                }
+            });
+        });
+    }
+    
     if (viewName !== 'process') {
         cancelAnimation();
     }
@@ -1015,7 +1026,8 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
         chartPartiesInstance.options.scales.y.ticks.color = textColor;
         chartPartiesInstance.options.scales.y.grid.color = gridColor;
         chartPartiesInstance.options.scales.x.ticks.color = textColor;
-        chartPartiesInstance.update('none');
+        chartPartiesInstance.resize();
+        chartPartiesInstance.update();
     } else {
         chartPartiesInstance = new Chart(ctxParties, { type: 'bar', data: { labels: partiesLabels, datasets: [{ label: 'Pending Value (₹)', data: partiesData, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
     }
@@ -1028,7 +1040,8 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
         chartItemsInstance.options.scales.x.ticks.color = textColor;
         chartItemsInstance.options.scales.x.grid.color = gridColor;
         chartItemsInstance.options.scales.y.ticks.color = textColor;
-        chartItemsInstance.update('none');
+        chartItemsInstance.resize();
+        chartItemsInstance.update();
     } else {
         chartItemsInstance = new Chart(ctxItems, { type: 'bar', indexAxis: 'y', data: { labels: itemsLabels, datasets: [{ label: 'Qty', data: itemsData, backgroundColor: 'rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: textColor }, grid: { color: gridColor } }, y: { ticks: { color: textColor }, grid: { display: false } } } } });
     }
@@ -1039,7 +1052,8 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
         chartTrendInstance.options.scales.y.ticks.color = textColor;
         chartTrendInstance.options.scales.y.grid.color = gridColor;
         chartTrendInstance.options.scales.x.ticks.color = textColor;
-        chartTrendInstance.update('none');
+        chartTrendInstance.resize();
+        chartTrendInstance.update();
     } else {
         chartTrendInstance = new Chart(ctxTrend, { type: 'line', data: { labels: dates, datasets: [{ label: 'Orders', data: trendCounts, borderColor: 'rgba(168, 85, 247, 1)', backgroundColor: 'rgba(168, 85, 247, 0.1)', fill: true, tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
     }
@@ -1047,7 +1061,8 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
     const distData = [delC, aprC, Math.max(0, (finalDeduplicatedData ? finalDeduplicatedData.length : 0) - delC - aprC)];
     if (chartDistributionInstance) {
         chartDistributionInstance.data.datasets[0].data = distData;
-        chartDistributionInstance.update('none');
+        chartDistributionInstance.resize();
+        chartDistributionInstance.update();
     } else {
         chartDistributionInstance = new Chart(ctxDist, { type: 'doughnut', data: { labels: ['DEL (Local)', 'APR (Outstation)', 'Other'], datasets: [{ data: distData, backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(249, 115, 22, 0.7)', 'rgba(156, 163, 175, 0.5)'], borderColor: ['rgba(59, 130, 246, 1)', 'rgba(249, 115, 22, 1)', 'rgba(156, 163, 175, 1)'], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textColor } } } } });
     }
@@ -1058,7 +1073,8 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
         chartAgingInstance.options.scales.y.ticks.color = textColor;
         chartAgingInstance.options.scales.y.grid.color = gridColor;
         chartAgingInstance.options.scales.x.ticks.color = textColor;
-        chartAgingInstance.update('none');
+        chartAgingInstance.resize();
+        chartAgingInstance.update();
     } else {
         chartAgingInstance = new Chart(ctxAging, {
             type: 'bar',
