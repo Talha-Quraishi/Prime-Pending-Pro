@@ -40,13 +40,20 @@ async function persistRulesToStorage(quiet = false) {
 
 
 function triggerReDeduplication() {
-    if (originalJsonData || transformedData) {
-        const dataSrc = transformedData || originalJsonData;
-        finalDeduplicatedData = findAndKeepLatestOrders(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
-        currentFilteredData = finalDeduplicatedData;
-        applyDashboardFilters();
-        if (typeof regenerateWorkbook === 'function') {
-            regenerateWorkbook();
+    const dataSrc = (typeof getTransformedData === 'function' ? getTransformedData() : transformedData) ||
+                    (typeof getOriginalJsonData === 'function' ? getOriginalJsonData() : originalJsonData);
+    if (dataSrc) {
+        const dedupFn = typeof findAndKeepLatestOrders === 'function' ? findAndKeepLatestOrders : null;
+        if (dedupFn) {
+            const newResult = dedupFn(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
+            if (typeof updateProcessingResult === 'function') {
+                updateProcessingResult(newResult);
+            } else {
+                finalDeduplicatedData = newResult;
+                currentFilteredData = newResult;
+                if (typeof applyDashboardFilters === 'function') applyDashboardFilters();
+                if (typeof regenerateWorkbook === 'function') regenerateWorkbook();
+            }
         }
     }
 }
@@ -239,33 +246,18 @@ function importRulesConfig(event) {
     const reader = new FileReader();
     reader.onload = async function(e) {
         try {
-            const parsed = JSON.parse(e.target.result);
-            if (!parsed) throw new Error("File content is empty or invalid JSON.");
+            const rawParsed = JSON.parse(e.target.result);
+            if (!rawParsed) throw new Error("File content is empty or invalid JSON.");
 
-            // Validate minimal structure
-            const hasExcluded = Array.isArray(parsed.excludedParties);
-            const hasDeduplicate = Array.isArray(parsed.deduplicateParties);
-            const hasSpecial = Array.isArray(parsed.specialParties);
-            const hasFullyExcluded = Array.isArray(parsed.fullyExcludedParties);
-            const hasMerges = parsed.partyMerges && typeof parsed.partyMerges === 'object';
-
-            if (!hasExcluded && !hasDeduplicate && !hasSpecial && !hasFullyExcluded && !hasMerges) {
-                throw new Error("Invalid backup format. Missing rules configuration arrays.");
-            }
+            const migrationFn = typeof migrateRulesData === 'function' ? migrateRulesData : (d => d);
+            const parsed = migrationFn(rawParsed);
 
             // Update memory state with uppercase normalization
-            excludedParties = (parsed.excludedParties || []).map(p => String(p).toUpperCase());
-            deduplicateParties = (parsed.deduplicateParties || []).map(p => String(p).toUpperCase());
-            specialParties = (parsed.specialParties || []).map(p => String(p).toUpperCase());
-            fullyExcludedParties = (parsed.fullyExcludedParties || []).map(p => String(p).toUpperCase());
-
-            // Normalize partyMerges keys to uppercase, values as-is
-            partyMerges = {};
-            if (parsed.partyMerges) {
-                for (const key in parsed.partyMerges) {
-                    partyMerges[key.toUpperCase()] = parsed.partyMerges[key];
-                }
-            }
+            excludedParties = parsed.excludedParties || [];
+            deduplicateParties = parsed.deduplicateParties || [];
+            specialParties = parsed.specialParties || [];
+            fullyExcludedParties = parsed.fullyExcludedParties || [];
+            partyMerges = parsed.partyMerges || {};
 
             // Sync to partyRulesMap
             partyRulesMap = {};

@@ -43,6 +43,23 @@ function setFinalDeduplicatedData(data) {
     }
 }
 
+function getOriginalJsonData() { return originalJsonData; }
+function getTransformedData() { return transformedData; }
+function getFinalDeduplicatedData() { return finalDeduplicatedData; }
+function getCurrentFilteredData() { return currentFilteredData; }
+function getUploadedFileData() { return uploadedFileData; }
+
+function updateProcessingResult(newDeduplicatedData, options = {}) {
+    setFinalDeduplicatedData(newDeduplicatedData);
+    currentFilteredData = finalDeduplicatedData;
+    if (options.refreshDashboard !== false && typeof applyDashboardFilters === 'function') {
+        applyDashboardFilters();
+    }
+    if (options.regenerateWorkbook !== false && typeof regenerateWorkbook === 'function') {
+        regenerateWorkbook();
+    }
+}
+
 function cancelAnimation() {}
 
 function updateProgressUI(percent, statusText) {
