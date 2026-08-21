@@ -1,5 +1,11 @@
 self.importScripts('../libs/xlsx.full.min.js');
 self.importScripts('../libs/exceljs.min.js');
+self.importScripts('business/normalization.js');
+self.importScripts('excel/schema.js');
+self.importScripts('business/completion.js');
+self.importScripts('business/party-rules.js');
+self.importScripts('business/deduplication.js');
+self.importScripts('excel/exporter.js');
 self.importScripts('processor.js');
 
 self.onmessage = async function(e) {

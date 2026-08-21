@@ -326,7 +326,7 @@ async function persistConfigValue(key, value) {
 // --- Application Initialization Coordinator ---
 
 async function initializeApp() {
-    let versionStr = '3.30.18';
+    let versionStr = '3.30.21';
     if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
             versionStr = await window.electronAPI.getAppVersion();

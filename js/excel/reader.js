@@ -111,11 +111,10 @@ function handleFile(file) {
                     scanWorker.terminate();
                     runScanFallback(fileData);
                 };
-                const transferBuffer = fileData.slice(0);
                 scanWorker.postMessage({
                     action: 'scan',
-                    fileData: transferBuffer
-                }, [transferBuffer]);
+                    fileData: fileData.slice(0)
+                });
             } catch (workerError) {
                 console.error('Failed to create scan worker, running main thread fallback:', workerError);
                 runScanFallback(fileData);

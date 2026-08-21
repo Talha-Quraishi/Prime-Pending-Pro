@@ -51,13 +51,12 @@ function runWorkerProcessing(payload, options = {}) {
                 reject(err instanceof Error ? err : new Error(err.message || "Worker crashed unexpectedly"));
             };
 
-            // Transferable buffer optimization where available
-            const buffer = payload.fileData?.buffer || payload.fileData;
-            if (buffer && buffer instanceof ArrayBuffer) {
-                worker.postMessage(payload, [buffer]);
-            } else {
-                worker.postMessage(payload);
+            // Pass cloned binary buffer so main thread data is never detached
+            const clonedPayload = { ...payload };
+            if (payload.fileData instanceof Uint8Array) {
+                clonedPayload.fileData = payload.fileData.slice(0);
             }
+            worker.postMessage(clonedPayload);
         } catch (err) {
             cancelActiveWorker();
             reject(err);
