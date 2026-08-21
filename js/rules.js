@@ -3,28 +3,38 @@
 let filterNewOnly = false;
 
 async function persistRulesToStorage(quiet = false) {
-    if (!quiet) showToast("Saving configurations...", "warning");
-    if (window.electronAPI) {
-        const currentConfig = await window.electronAPI.loadConfig() || {};
-        currentConfig.settingsVersion = 1;
-        currentConfig.excludedParties = excludedParties;
-        currentConfig.deduplicateParties = deduplicateParties;
-        currentConfig.specialParties = specialParties;
-        currentConfig.fullyExcludedParties = fullyExcludedParties;
-        currentConfig.partyMerges = partyMerges;
-        const success = await window.electronAPI.saveConfig(currentConfig);
-        if (!quiet) {
-            if (success) showToast("Party rules saved successfully! ✅", "success");
-            else showToast("Failed to save rules. ❌", "error");
+    if (!quiet && typeof showToast === 'function') showToast("Saving configurations...", "warning");
+    
+    if (typeof saveRulesToStorage === 'function') {
+        saveRulesToStorage({
+            excludedParties,
+            deduplicateParties,
+            specialParties,
+            fullyExcludedParties,
+            partyMerges
+        });
+    }
+
+    if (window.electronAPI && typeof window.electronAPI.saveConfig === 'function') {
+        try {
+            const currentConfig = await window.electronAPI.loadConfig() || {};
+            currentConfig.settingsVersion = 1;
+            currentConfig.rulesVersion = 1;
+            currentConfig.excludedParties = excludedParties;
+            currentConfig.deduplicateParties = deduplicateParties;
+            currentConfig.specialParties = specialParties;
+            currentConfig.fullyExcludedParties = fullyExcludedParties;
+            currentConfig.partyMerges = partyMerges;
+            const success = await window.electronAPI.saveConfig(currentConfig);
+            if (!quiet && typeof showToast === 'function') {
+                if (success) showToast("Party rules saved successfully! ✅", "success");
+                else showToast("Failed to save rules. ❌", "error");
+            }
+        } catch (e) {
+            console.warn("Electron API saveConfig failed:", e);
         }
     } else {
-        localStorage.setItem('settingsVersion', '1');
-        localStorage.setItem('excludedParties', JSON.stringify(excludedParties));
-        localStorage.setItem('deduplicateParties', JSON.stringify(deduplicateParties));
-        localStorage.setItem('specialParties', JSON.stringify(specialParties));
-        localStorage.setItem('fullyExcludedParties', JSON.stringify(fullyExcludedParties));
-        localStorage.setItem('partyMerges', JSON.stringify(partyMerges));
-        if (!quiet) showToast("Party rules saved to LocalStorage! ✅", "success");
+        if (!quiet && typeof showToast === 'function') showToast("Party rules saved to storage! ✅", "success");
     }
 }
 

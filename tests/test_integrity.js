@@ -49,7 +49,13 @@ test("1. All core project JavaScript files parse and compile without syntax erro
         'js/excel/exporter.js',
         'js/processing/pipeline.js',
         'js/processing/worker-manager.js',
-        'js/processing/fallback.js'
+        'js/processing/fallback.js',
+        'js/business/normalization.js',
+        'js/excel/schema.js',
+        'js/business/completion.js',
+        'js/business/party-rules.js',
+        'js/business/deduplication.js',
+        'js/storage/rules-storage.js'
     ];
 
     coreJsFiles.forEach(relPath => {
@@ -171,13 +177,32 @@ test("5. Background web worker has valid syntax and handles required actions", (
     assert.ok(fs.existsSync(workerPath), "js/worker.js must exist");
     const workerCode = fs.readFileSync(workerPath, 'utf8');
 
-    // Verify syntax
-    assert.doesNotThrow(() => {
-        new vm.Script(workerCode, { filename: 'js/worker.js' });
-    });
+    // Simulate realistic Web Worker scope with sequential importScripts execution
+    const sandbox = {
+        console: console
+    };
+    sandbox.self = sandbox;
+    sandbox.globalThis = sandbox;
+    const context = vm.createContext(sandbox);
 
-    // Check message handlers
-    assert.ok(workerCode.includes('onmessage'), "js/worker.js must define onmessage");
+    sandbox.importScripts = (...scripts) => {
+        for (const s of scripts) {
+            let scriptRel = s;
+            if (s.startsWith('../')) scriptRel = s.replace(/^\.\.\//, '');
+            else scriptRel = path.join('js', s);
+            const fullScriptPath = path.join(rootDir, scriptRel);
+            if (fs.existsSync(fullScriptPath)) {
+                const code = fs.readFileSync(fullScriptPath, 'utf8');
+                vm.runInContext(code, context, { filename: scriptRel });
+            }
+        }
+    };
+
+    assert.doesNotThrow(() => {
+        vm.runInContext(workerCode, context, { filename: 'js/worker.js' });
+    }, "Sequential importScripts execution in worker context failed");
+
+    assert.ok(typeof sandbox.onmessage === 'function', "js/worker.js must define onmessage");
     assert.ok(workerCode.includes("'scan'") || workerCode.includes('"scan"'), "js/worker.js must support scan action");
 });
 
