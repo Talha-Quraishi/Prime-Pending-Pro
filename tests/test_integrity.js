@@ -46,7 +46,10 @@ test("1. All core project JavaScript files parse and compile without syntax erro
         'js/ui/history.js',
         'js/ui/dashboard.js',
         'js/excel/reader.js',
-        'js/excel/exporter.js'
+        'js/excel/exporter.js',
+        'js/processing/pipeline.js',
+        'js/processing/worker-manager.js',
+        'js/processing/fallback.js'
     ];
 
     coreJsFiles.forEach(relPath => {
