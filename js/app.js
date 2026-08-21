@@ -363,12 +363,16 @@ async function initializeApp() {
     if (watermarkEl) watermarkEl.title = `Prime Pending Pro v${versionStr}`;
 
     let config = {};
-    if (window.electronAPI) {
+    if (window.electronAPI && typeof window.electronAPI.loadConfig === 'function') {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
         const verDisp = document.getElementById('versionDisplay');
         if (verDisp) verDisp.textContent = `v${versionStr} (Desktop)`;
-        config = await window.electronAPI.loadConfig() || {};
+        try {
+            config = await window.electronAPI.loadConfig() || {};
+        } catch (e) {
+            config = {};
+        }
     } else {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} • Created by Talha`;
@@ -378,11 +382,6 @@ async function initializeApp() {
             config = {
                 theme: localStorage.getItem('theme'),
                 sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true',
-                excludedParties: JSON.parse(localStorage.getItem('excludedParties')),
-                deduplicateParties: JSON.parse(localStorage.getItem('deduplicateParties')),
-                specialParties: JSON.parse(localStorage.getItem('specialParties')),
-                fullyExcludedParties: JSON.parse(localStorage.getItem('fullyExcludedParties')),
-                partyMerges: JSON.parse(localStorage.getItem('partyMerges')),
                 enableExcelStyling: localStorage.getItem('enableExcelStyling') !== 'false',
                 performanceMode: localStorage.getItem('performanceMode') === 'true'
             };
@@ -391,25 +390,16 @@ async function initializeApp() {
         }
     }
 
-    // Set deduplication rules from loaded configuration
-    if (config.excludedParties && Array.isArray(config.excludedParties)) {
-        excludedParties = config.excludedParties.map(p => String(p).toUpperCase());
-    }
-    if (config.deduplicateParties && Array.isArray(config.deduplicateParties)) {
-        deduplicateParties = config.deduplicateParties.map(p => String(p).toUpperCase());
-    }
-    if (config.specialParties && Array.isArray(config.specialParties)) {
-        specialParties = config.specialParties.map(p => String(p).toUpperCase());
-    }
-    if (config.fullyExcludedParties && Array.isArray(config.fullyExcludedParties)) {
-        fullyExcludedParties = config.fullyExcludedParties.map(p => String(p).toUpperCase());
-    }
-    if (config.partyMerges && typeof config.partyMerges === 'object') {
-        partyMerges = {};
-        for (const key in config.partyMerges) {
-            partyMerges[key.toUpperCase()] = config.partyMerges[key];
-        }
-    }
+    // Load and migrate deduplication rules using rules-storage module
+    const rulesConfig = typeof loadRulesFromStorage === 'function'
+        ? await loadRulesFromStorage()
+        : { excludedParties: [], deduplicateParties: [], specialParties: [], fullyExcludedParties: [], partyMerges: {} };
+
+    excludedParties = rulesConfig.excludedParties || [];
+    deduplicateParties = rulesConfig.deduplicateParties || [];
+    specialParties = rulesConfig.specialParties || [];
+    fullyExcludedParties = rulesConfig.fullyExcludedParties || [];
+    partyMerges = rulesConfig.partyMerges || {};
 
     partyRulesMap = {};
     excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');

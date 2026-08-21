@@ -5,8 +5,10 @@ let filterNewOnly = false;
 async function persistRulesToStorage(quiet = false) {
     if (!quiet && typeof showToast === 'function') showToast("Saving configurations...", "warning");
     
-    if (typeof saveRulesToStorage === 'function') {
-        saveRulesToStorage({
+    const saveFn = typeof saveRulesToStorage === 'function' ? saveRulesToStorage : null;
+    let success = false;
+    if (saveFn) {
+        success = await saveFn({
             excludedParties,
             deduplicateParties,
             specialParties,
@@ -14,28 +16,11 @@ async function persistRulesToStorage(quiet = false) {
             partyMerges
         });
     }
-
-    if (window.electronAPI && typeof window.electronAPI.saveConfig === 'function') {
-        try {
-            const currentConfig = await window.electronAPI.loadConfig() || {};
-            currentConfig.settingsVersion = 1;
-            currentConfig.rulesVersion = 1;
-            currentConfig.excludedParties = excludedParties;
-            currentConfig.deduplicateParties = deduplicateParties;
-            currentConfig.specialParties = specialParties;
-            currentConfig.fullyExcludedParties = fullyExcludedParties;
-            currentConfig.partyMerges = partyMerges;
-            const success = await window.electronAPI.saveConfig(currentConfig);
-            if (!quiet && typeof showToast === 'function') {
-                if (success) showToast("Party rules saved successfully! ✅", "success");
-                else showToast("Failed to save rules. ❌", "error");
-            }
-        } catch (e) {
-            console.warn("Electron API saveConfig failed:", e);
-        }
-    } else {
-        if (!quiet && typeof showToast === 'function') showToast("Party rules saved to storage! ✅", "success");
+    if (!quiet && typeof showToast === 'function') {
+        if (success) showToast("Party rules saved successfully! ✅", "success");
+        else showToast("Failed to save rules. ❌", "error");
     }
+    return success;
 }
 
 
@@ -303,22 +288,39 @@ function renderPartyRulesList() {
     // Sync partyRulesMap from active arrays for any scanned parties
     uniquePartiesList.forEach(party => {
         const partyUpper = party.toUpperCase();
-        if (excludedParties.includes(partyUpper)) {
-            partyRulesMap[partyUpper] = 'keep-all';
-        } else if (deduplicateParties.includes(partyUpper)) {
-            partyRulesMap[partyUpper] = 'keep-latest';
-        } else if (specialParties.includes(partyUpper)) {
-            partyRulesMap[partyUpper] = 'marka';
-        } else if (fullyExcludedParties.includes(partyUpper)) {
-            partyRulesMap[partyUpper] = 'exclude';
+        if (typeof classifyPartyRule === 'function') {
+            const classified = classifyPartyRule(partyUpper, {
+                excludedParties,
+                deduplicateParties,
+                specialParties,
+                fullyExcludedParties
+            });
+            if (classified === 'KEEP_ALL') partyRulesMap[partyUpper] = 'keep-all';
+            else if (classified === 'KEEP_LATEST_DATE') partyRulesMap[partyUpper] = 'keep-latest';
+            else if (classified === 'MARKA_GROUPING') partyRulesMap[partyUpper] = 'marka';
+            else if (classified === 'FULLY_EXCLUDED') partyRulesMap[partyUpper] = 'exclude';
+            else if (!partyRulesMap[partyUpper]) partyRulesMap[partyUpper] = 'default';
         } else {
-            if (!partyRulesMap[partyUpper]) partyRulesMap[partyUpper] = 'default';
+            if (excludedParties.includes(partyUpper)) {
+                partyRulesMap[partyUpper] = 'keep-all';
+            } else if (deduplicateParties.includes(partyUpper)) {
+                partyRulesMap[partyUpper] = 'keep-latest';
+            } else if (specialParties.includes(partyUpper)) {
+                partyRulesMap[partyUpper] = 'marka';
+            } else if (fullyExcludedParties.includes(partyUpper)) {
+                partyRulesMap[partyUpper] = 'exclude';
+            } else {
+                if (!partyRulesMap[partyUpper]) partyRulesMap[partyUpper] = 'default';
+            }
         }
     });
 
     // Calculate new/unconfigured parties
     const unconfiguredCount = uniquePartiesList.filter(party => {
         const partyUpper = party.toUpperCase();
+        if (typeof classifyPartyRule === 'function') {
+            return classifyPartyRule(partyUpper, { excludedParties, deduplicateParties, specialParties, fullyExcludedParties }) === 'DEFAULT';
+        }
         return !excludedParties.includes(partyUpper) &&
                !deduplicateParties.includes(partyUpper) &&
                !specialParties.includes(partyUpper) &&

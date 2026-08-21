@@ -83,6 +83,41 @@ test("4. Migration is idempotent (migrating already migrated data produces ident
     assert.deepStrictEqual(migrated1, migrated2);
 });
 
+// 5. In-memory state get/set
+test("5. getRulesState and setRulesState maintain validated reactive state", () => {
+    const { getRulesState, setRulesState } = require('../js/storage/rules-storage');
+    const newState = {
+        excludedParties: ['alpha', 'beta'],
+        deduplicateParties: ['gamma'],
+        specialParties: [],
+        fullyExcludedParties: [],
+        partyMerges: { 'old name': 'New Name' }
+    };
+
+    setRulesState(newState);
+    const state = getRulesState();
+    assert.strictEqual(state.rulesVersion, RULES_STORAGE_VERSION);
+    assert.deepStrictEqual(state.excludedParties, ['ALPHA', 'BETA']);
+    assert.strictEqual(state.partyMerges['OLD NAME'], 'New Name');
+});
+
+// 6. loadRulesFromStorage & saveRulesToStorage execution
+test("6. loadRulesFromStorage and saveRulesToStorage execute safely without throwing", async () => {
+    const { loadRulesFromStorage, saveRulesToStorage } = require('../js/storage/rules-storage');
+    const loaded = await loadRulesFromStorage();
+    assert.strictEqual(typeof loaded, 'object');
+    assert.strictEqual(loaded.rulesVersion, RULES_STORAGE_VERSION);
+
+    const saved = await saveRulesToStorage({
+        excludedParties: ['TEST PARTY'],
+        deduplicateParties: [],
+        specialParties: [],
+        fullyExcludedParties: [],
+        partyMerges: {}
+    });
+    assert.strictEqual(typeof saved, 'boolean');
+});
+
 if (failed > 0) {
     throw new Error(`Storage migration tests failed: ${failed} failure(s)`);
 }
