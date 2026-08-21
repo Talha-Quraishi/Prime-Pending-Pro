@@ -116,181 +116,98 @@ function processFile() {
 
     const file = fileInput.file;
     const reader = new FileReader();
-    reader.onload = function(e) {
-        setTimeout(() => { 
+    reader.onload = async function(e) {
+        try {
             const fileData = new Uint8Array(e.target.result);
             uploadedFileData = fileData;
             updateProgressUI(15, "Initializing processing engine...");
 
-            function handleSuccess(res) {
-                updateProgressUI(100, "Transformation complete! Rendering interface...");
-                originalJsonData = res.originalJson;
-                transformedData = res.transformed;
-                setFinalDeduplicatedData(res.finalDeduplicated);
-                processedWbout = res.wbout;
-                activeProcessWorker = null;
-
-                if (transformedData && transformedData.length > 0) {
-                    uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
-                    if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
-                    if (typeof renderPartyRulesList === 'function') renderPartyRulesList();
-                }
-
-                setTimeout(() => {
-                    const statTotalRows = document.getElementById('statTotalRows');
-                    if (statTotalRows && originalJsonData) statTotalRows.textContent = originalJsonData.length;
-
-                    setTimeout(() => {
-                        if (processingContainer) processingContainer.classList.add('hidden');
-                        if (uploadContainer) uploadContainer.classList.add('hidden');
-                        if (downloadContainer) {
-                            downloadContainer.classList.remove('hidden');
-                            downloadContainer.classList.add('fade-in');
-                        }
-                        if (resetButton) {
-                            resetButton.classList.remove('hidden');
-                            resetButton.classList.add('fade-in');
-                        }
-                        
-                        const durationSec = ((Date.now() - processingStartTime) / 1000).toFixed(1) + 's';
-                        const postSummary = document.getElementById('postProcessSummary');
-                        if (postSummary) {
-                            const inputCount = originalJsonData ? originalJsonData.length : 0;
-                            const outputCount = finalDeduplicatedData ? finalDeduplicatedData.length : 0;
-                            const transCount = transformedData ? transformedData.length : 0;
-                            const removedCount = Math.max(0, transCount - outputCount);
-                            
-                            const inEl = document.getElementById('summaryInputRows');
-                            const outEl = document.getElementById('summaryOutputRows');
-                            const remEl = document.getElementById('summaryRemovedRows');
-                            const timeEl = document.getElementById('summaryTimeTaken');
-                            if (inEl) inEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(inputCount) : inputCount.toLocaleString('en-IN');
-                            if (outEl) outEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(outputCount) : outputCount.toLocaleString('en-IN');
-                            if (remEl) remEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(removedCount) : removedCount.toLocaleString('en-IN');
-                            if (timeEl) timeEl.textContent = durationSec;
-                            postSummary.classList.remove('hidden');
-                        }
-
-                        currentFilteredData = finalDeduplicatedData;
-                        if (typeof setFilterType === 'function') setFilterType('ALL');
-                        
-                        if (!isRestoringFromHistory && typeof saveCurrentUploadToHistory === 'function') {
-                            const totalRows = originalJsonData ? originalJsonData.length : 0;
-                            const uniqueParties = uniquePartiesList ? uniquePartiesList.length : 0;
-                            const totalValue = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['VALUE']) : (parseFloat(r['VALUE']) || 0)), 0) : 0;
-                            const totalQty = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['BALANCE']) : (parseFloat(r['BALANCE']) || 0)), 0) : 0;
-                            saveCurrentUploadToHistory({ totalRows, uniqueParties, totalValue, totalQty });
-                        }
-                        isRestoringFromHistory = false;
-                        
-                        if (messageText) messageText.textContent = "File processed successfully!";
-                        if (simpleMessage) {
-                            simpleMessage.classList.remove('text-red-500', 'dark:text-red-400');
-                            simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
-                        }
-                        if (typeof showToast === 'function') showToast("File processed successfully!", 'success');
-                    }, 150);
-                }, 200);
-            }
-
-            let worker = null;
-            try {
-                worker = new Worker('js/worker.js');
-                activeProcessWorker = worker;
-
-                worker.onmessage = function(workerEvent) {
-                    const result = workerEvent.data;
-                    if (result.action === 'status') {
-                        updateProgressUI(result.progress, result.message);
-                        return;
-                    }
-                    worker.terminate();
-                    activeProcessWorker = null;
-
-                    if (result.success) {
-                        handleSuccess(result);
-                    } else {
-                        showError('errorProcessing', new Error(result.error));
-                        if (processingContainer) processingContainer.classList.add('hidden');
-                        if (transformButton) transformButton.classList.remove('hidden');
-                    }
-                };
-
-                worker.onerror = function(err) {
-                    console.error("Worker crash, running main thread fallback:", err);
-                    worker.terminate();
-                    activeProcessWorker = null;
-                    runFallback();
-                };
-
-                const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
-                worker.postMessage({
-                    fileData,
+            const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
+            const res = await processWorkbook({
+                fileData,
+                rules: {
                     excludedParties,
                     deduplicateParties,
                     specialParties,
                     partyMerges,
-                    fullyExcludedParties,
-                    enableExcelStyling
-                }, [fileData.buffer || fileData]);
-            } catch (workerError) {
-                console.error("Failed to create Web Worker, running main thread fallback:", workerError);
-                runFallback();
+                    fullyExcludedParties
+                },
+                enableExcelStyling,
+                onProgress: updateProgressUI
+            });
+
+            updateProgressUI(100, "Transformation complete! Rendering interface...");
+            originalJsonData = res.originalJson;
+            transformedData = res.transformed;
+            setFinalDeduplicatedData(res.finalDeduplicated);
+            processedWbout = res.wbout;
+
+            if (transformedData && transformedData.length > 0) {
+                uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
+                if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
+                if (typeof renderPartyRulesList === 'function') renderPartyRulesList();
             }
 
-            function runFallback() {
-                updateProgressUI(20, "Reading workbook and parsing sheets...");
+            setTimeout(() => {
+                const statTotalRows = document.getElementById('statTotalRows');
+                if (statTotalRows && originalJsonData) statTotalRows.textContent = originalJsonData.length;
+
                 setTimeout(() => {
-                    try {
-                        const workbook = XLSX.read(fileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
-                        const originalSheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[originalSheetName];
-                        
-                        updateProgressUI(40, "Converting sheet rows to structured JSON...");
-                        setTimeout(() => {
-                            const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-                            const originalJson = convertArrayOfArraysToObjects(originalRawData);
-                            
-                            updateProgressUI(60, "Restructuring rows and applying rules...");
-                            setTimeout(() => {
-                                const transformed = transformExcelData(originalRawData);
-                                const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
-                                
-                                updateProgressUI(80, "Generating styled sheets via ExcelJS...");
-                                const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
-                                setTimeout(() => {
-                                    generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling)
-                                        .then(wbout => {
-                                            handleSuccess({
-                                                originalJson,
-                                                transformed,
-                                                finalDeduplicated,
-                                                wbout,
-                                                originalSheetName
-                                            });
-                                        })
-                                        .catch(err => {
-                                            console.error("ExcelJS fallback export failed:", err);
-                                            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-                                            handleSuccess({
-                                                originalJson,
-                                                transformed,
-                                                finalDeduplicated,
-                                                wbout,
-                                                originalSheetName
-                                            });
-                                        });
-                                }, 50);
-                            }, 50);
-                        }, 50);
-                    } catch (fallbackError) {
-                        showError('errorProcessing', fallbackError);
-                        if (processingContainer) processingContainer.classList.add('hidden');
-                        if (transformButton) transformButton.classList.remove('hidden');
+                    if (processingContainer) processingContainer.classList.add('hidden');
+                    if (uploadContainer) uploadContainer.classList.add('hidden');
+                    if (downloadContainer) {
+                        downloadContainer.classList.remove('hidden');
+                        downloadContainer.classList.add('fade-in');
                     }
-                }, 50);
-            }
-        }, 300);
+                    if (resetButton) {
+                        resetButton.classList.remove('hidden');
+                        resetButton.classList.add('fade-in');
+                    }
+                    
+                    const durationSec = ((Date.now() - processingStartTime) / 1000).toFixed(1) + 's';
+                    const postSummary = document.getElementById('postProcessSummary');
+                    if (postSummary) {
+                        const inputCount = originalJsonData ? originalJsonData.length : 0;
+                        const outputCount = finalDeduplicatedData ? finalDeduplicatedData.length : 0;
+                        const transCount = transformedData ? transformedData.length : 0;
+                        const removedCount = Math.max(0, transCount - outputCount);
+                        
+                        const inEl = document.getElementById('summaryInputRows');
+                        const outEl = document.getElementById('summaryOutputRows');
+                        const remEl = document.getElementById('summaryRemovedRows');
+                        const timeEl = document.getElementById('summaryTimeTaken');
+                        if (inEl) inEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(inputCount) : inputCount.toLocaleString('en-IN');
+                        if (outEl) outEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(outputCount) : outputCount.toLocaleString('en-IN');
+                        if (remEl) remEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(removedCount) : removedCount.toLocaleString('en-IN');
+                        if (timeEl) timeEl.textContent = durationSec;
+                        postSummary.classList.remove('hidden');
+                    }
+
+                    currentFilteredData = finalDeduplicatedData;
+                    if (typeof setFilterType === 'function') setFilterType('ALL');
+                    
+                    if (!isRestoringFromHistory && typeof saveCurrentUploadToHistory === 'function') {
+                        const totalRows = originalJsonData ? originalJsonData.length : 0;
+                        const uniqueParties = uniquePartiesList ? uniquePartiesList.length : 0;
+                        const totalValue = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['VALUE']) : (parseFloat(r['VALUE']) || 0)), 0) : 0;
+                        const totalQty = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['BALANCE']) : (parseFloat(r['BALANCE']) || 0)), 0) : 0;
+                        saveCurrentUploadToHistory({ totalRows, uniqueParties, totalValue, totalQty });
+                    }
+                    isRestoringFromHistory = false;
+                    
+                    if (messageText) messageText.textContent = "File processed successfully!";
+                    if (simpleMessage) {
+                        simpleMessage.classList.remove('text-red-500', 'dark:text-red-400');
+                        simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
+                    }
+                    if (typeof showToast === 'function') showToast("File processed successfully!", 'success');
+                }, 150);
+            }, 200);
+        } catch (procErr) {
+            showError('errorProcessing', procErr);
+            if (processingContainer) processingContainer.classList.add('hidden');
+            if (transformButton) transformButton.classList.remove('hidden');
+        }
     };
     reader.onerror = function(e) {
         cancelAnimation();
@@ -536,9 +453,8 @@ async function initializeApp() {
     const cancelProcessButton = document.getElementById('cancelProcessButton');
     if (cancelProcessButton) {
         cancelProcessButton.addEventListener('click', () => {
-            if (activeProcessWorker) {
-                activeProcessWorker.terminate();
-                activeProcessWorker = null;
+            if (typeof cancelProcessing === 'function') {
+                cancelProcessing();
             }
             const processingContainer = document.getElementById('processingContainer');
             const transformButton = document.getElementById('transformButton');
