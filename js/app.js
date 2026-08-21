@@ -1,173 +1,31 @@
-// --- APP INITIALIZATION, NAVIGATION, FILE SELECTION & MAIN THREAD RUNNERS ---
+/**
+ * Prime-Pending-Pro - Main Application Orchestrator
+ * Coordinates UI views, Web Worker processing pipelines, rules management, and storage.
+ */
 
-function getLocalDateString(dateObj) {
-    if (!dateObj || dateObj.getTime() === 0) return '';
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const dd = String(dateObj.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-}
-
-// Helper to dynamically load external libraries asynchronously
-function loadScript(src) {
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
-        document.head.appendChild(script);
-    });
-}
-
-// Debounce helper for high-performance input filters
-function debounce(func, wait) {
-    let timeout;
-    const debounced = function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), wait);
-    };
-    debounced.cancel = function() {
-        clearTimeout(timeout);
-    };
-    return debounced;
-}
-
-// Numeric count-up animation helper using requestAnimationFrame
-function animateValue(element, target, options = {}) {
-    if (!element) return;
-    const duration = options.duration || 600;
-    const format = options.format || ((val) => Math.floor(val).toLocaleString('en-IN'));
-    
-    let start = 0;
-    if (element.textContent) {
-        const numStr = element.textContent.replace(/[^0-9.-]/g, '');
-        const parsed = parseFloat(numStr);
-        if (!isNaN(parsed)) start = parsed;
-    }
-    
-    if (start === target) {
-        element.textContent = format(target);
-        return;
-    }
-    
-    const currentAnimId = Symbol('animId');
-    element._currentAnimId = currentAnimId;
-    
-    const startTime = performance.now();
-    
-    function update(currentTime) {
-        if (element._currentAnimId !== currentAnimId) return;
-        
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        
-        // easeOutQuad easing
-        const easeProgress = progress * (2 - progress);
-        
-        const currentValue = start + (target - start) * easeProgress;
-        element.textContent = format(currentValue);
-        
-        if (progress < 1) {
-            requestAnimationFrame(update);
-        } else {
-            element.textContent = format(target);
-        }
-    }
-    
-    requestAnimationFrame(update);
-}
-
-function convertIpcBuffer(data) {
-    if (!data) return null;
-    if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
-        return data;
-    }
-    if (data.type === 'Buffer' && Array.isArray(data.data)) {
-        return new Uint8Array(data.data);
-    }
-    return data;
-}
-
-// --- DOM Elements ---
-const fileInput = document.getElementById('fileInput');
-const fileDropArea = document.getElementById('fileDropArea');
-const browseButton = document.getElementById('browseButton');
-const transformButton = document.getElementById('transformButton');
-const downloadExcelButton = document.getElementById('downloadExcelButton');
-const resetButton = document.getElementById('resetButton');
-const fileNameDisplay = document.getElementById('fileName');
-const messageContainer = document.getElementById('messageContainer');
-const simpleMessage = document.getElementById('simpleMessage');
-const messageText = document.getElementById('messageText');
-const showErrorLink = document.getElementById('showErrorLink');
-const detailedError = document.getElementById('detailedError');
-const processingContainer = document.getElementById('processingContainer');
-const progressBar = document.getElementById('progressBar');
-const processingStatus = document.getElementById('processingStatus');
-const uploadContainer = document.getElementById('fileDropArea'); // Maps to the process mode container
-const downloadContainer = document.getElementById('downloadContainer');
-
-// Main Navigation Elements
-const mainTabProcess = document.getElementById('mainTabProcess');
-const mainTabInsights = document.getElementById('mainTabInsights');
-const mainTabHistory = document.getElementById('mainTabHistory');
-const mainTabSettings = document.getElementById('mainTabSettings');
-const viewProcessContainer = document.getElementById('viewProcessContainer');
-const viewInsightsContainer = document.getElementById('viewInsightsContainer');
-const viewHistoryContainer = document.getElementById('viewHistoryContainer');
-const viewSettingsContainer = document.getElementById('viewSettingsContainer');
-
-// History View elements
-const historyTableBody = document.getElementById('historyTableBody');
-const historyEmptyState = document.getElementById('historyEmptyState');
-const historySearch = document.getElementById('historySearch');
-
-// Control Elements
-const themeToggle = document.getElementById('themeToggle');
-const themeToggleSwitch = document.getElementById('themeToggleSwitch');
-const hamburgerBtn = document.getElementById('hamburgerBtn');
-const sidebar = document.getElementById('sidebar');
-let themeIconLight = document.getElementById('themeIconLight');
-let themeIconDark = document.getElementById('themeIconDark');
-const htmlElement = document.documentElement;
-const toastContainer = document.getElementById('toastContainer');
-const checkForUpdatesBtn = document.getElementById('checkForUpdatesBtn');
-let updateSpin = document.getElementById('updateSpin');
-
-// Settings Backup & Restore buttons
-const exportRulesBtn = document.getElementById('exportRulesBtn');
-const importRulesBtn = document.getElementById('importRulesBtn');
-const importRulesInput = document.getElementById('importRulesInput');
-const excelStylingToggle = document.getElementById('excelStylingToggle');
-
-const partySearch = document.getElementById('partySearch');
-const partyRulesList = document.getElementById('partyRulesList');
-
-// Dashboard Elements
-const dashboardContainer = document.getElementById('dashboardContainer');
-const dashTotalValueDisplay = document.getElementById('dashTotalValueDisplay');
-const dashTotalQtyDisplay = document.getElementById('dashTotalQtyDisplay');
-const dashUniqueItemsDisplay = document.getElementById('dashUniqueItemsDisplay');
-const dashUniquePartiesDisplay = document.getElementById('dashUniquePartiesDisplay');
-
-// Filter Elements
-const searchInput = document.getElementById('searchInput');
-const filterAll = document.getElementById('filterAll');
-const filterDel = document.getElementById('filterDel');
-const filterApr = document.getElementById('filterApr');
-const dataTableBody = document.getElementById('dataTableBody');
-const tableEmptyState = document.getElementById('tableEmptyState');
-
-let chartPartiesInstance = null;
-let chartItemsInstance = null;
-let chartTrendInstance = null;
-let chartDistributionInstance = null;
-let chartAgingInstance = null; 
-
-// Data Variables
+// --- Global Application State ---
 let originalJsonData = null;
 let transformedData = null;
-let finalDeduplicatedData = null; // Source of truth
+let finalDeduplicatedData = null; // Single source of truth for processed pending orders
+let currentFilteredData = null;   // Active view after search/filter
+let uniquePartiesList = [];       // Unique parties list from active file
+
+let originalFileName = '';
+let processedWbout = null;
+let uploadedFileData = null;
+let isRestoringFromHistory = false;
+
+let originalExcelButtonHTML = '';
+let activeProcessWorker = null;
+let processingStartTime = 0;
+
+// Deduplication Rules Arrays (Loaded from config.json or localStorage)
+let excludedParties = [];           // "Keep All Orders"
+let deduplicateParties = [];        // "Keep Latest Only"
+let specialParties = [];            // Marka grouping
+let fullyExcludedParties = [];      // Exclude completely
+let partyRulesMap = {};             // Map of partyName -> rule
+let partyMerges = {};               // Map of spellingMistakePartyName -> correctedPartyName 
 
 function setFinalDeduplicatedData(data) {
     finalDeduplicatedData = data;
@@ -184,366 +42,70 @@ function setFinalDeduplicatedData(data) {
         });
     }
 }
-let currentFilteredData = null;   // Active view
-let uniquePartiesList = [];       // Unique parties list from active file
-let dashboardTableRows = [];      // For lazy loading detailed order list
-let loadedRowCount = 0;           // For lazy loading detailed order list
-const TABLE_CHUNK_SIZE = 50;
-
-let originalFileName = '';
-let processedWbout = null;
-let uploadedFileData = null;
-let isRestoringFromHistory = false;
-
-let animationFrameId = null;
-let originalExcelButtonHTML = '';
-let currentFilterType = 'ALL';
-let currentDiscount = 0; 
-
-// Deduplication Rules Arrays (Loaded from config.json or localStorage)
-let excludedParties = [];           // "Keep All Orders"
-let deduplicateParties = [];        // "Keep Latest Only"
-let specialParties = [];            // Marka grouping
-let fullyExcludedParties = [];      // Exclude completely
-let partyRulesMap = {};             // Map of partyName -> rule
-let partyMerges = {};               // Map of spellingMistakePartyName -> correctedPartyName 
-
-// --- Event Listeners ---
-
-// Main Tab Switch Listeners
-mainTabProcess.addEventListener('click', () => switchMainView('process'));
-mainTabInsights.addEventListener('click', () => switchMainView('insights'));
-mainTabHistory.addEventListener('click', () => {
-    switchMainView('history');
-    loadHistoryTable();
-});
-mainTabSettings.addEventListener('click', () => switchMainView('settings'));
-
-function switchMainView(viewName) {
-    const tabs = {
-        process: { btn: mainTabProcess, view: viewProcessContainer, title: "Process File" },
-        insights: { btn: mainTabInsights, view: viewInsightsContainer, title: "Data Insights Dashboard" },
-        history: { btn: mainTabHistory, view: viewHistoryContainer, title: "Processed File History" },
-        settings: { btn: mainTabSettings, view: viewSettingsContainer, title: "Rules & Settings" }
-    };
-    
-    Object.keys(tabs).forEach(k => {
-        const item = tabs[k];
-        if (k === viewName) {
-            item.btn.classList.add('active');
-            item.view.classList.remove('hidden');
-            document.getElementById('viewTitle').textContent = item.title;
-        } else {
-            item.btn.classList.remove('active');
-            item.view.classList.add('hidden');
-        }
-    });
-    
-    if (viewName !== 'process') {
-        cancelAnimation();
-    }
-}
-
-// --- File Selector Wrappers (Native Dialog vs Browser Picker) ---
-async function triggerFileSelection() {
-    if (window.electronAPI) {
-        try {
-            const fileObj = await window.electronAPI.selectFile();
-            if (fileObj) {
-                const binaryData = convertIpcBuffer(fileObj.data);
-                const mockFile = new File([binaryData], fileObj.name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                mockFile.path = fileObj.path;
-                fileInput.file = mockFile;
-                handleFile(mockFile);
-            }
-        } catch (err) {
-            console.error("Native select error", err);
-            showToast("Error opening explorer dialog", "error");
-        }
-    } else {
-        fileInput.click();
-    }
-}
-
-// --- Helper: Update file metadata preview card ---
-function updateFilePreview(rawData, transData) {
-    document.getElementById('statTotalRows').textContent = rawData.length;
-}
-
-function showPartyRulesSkeleton() {
-    if (!partyRulesList) return;
-    partyRulesList.innerHTML = `
-        <div class="sticky top-0 z-10 flex items-center justify-between p-2 bg-gray-100 dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-neutral-800 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider -mx-2.5 mb-2 px-[19px] rounded-t select-none">
-            <span class="flex-grow min-w-0 truncate">Party Name</span>
-            <div class="flex items-center flex-shrink-0 mr-1">
-                <span class="w-[75px] text-center" title="Keep All (No deduplication)">📋 All</span>
-                <span class="w-[75px] text-center" title="Keep Latest Date only">🔄 Latest</span>
-                <span class="w-[75px] text-center" title="Marka Grouping">🏷️ Marka</span>
-                <span class="w-[75px] text-center" title="Fully Exclude Party">❌ Exclude</span>
-            </div>
-        </div>
-    `;
-    for (let i = 0; i < 5; i++) {
-        const skeletonItem = document.createElement('div');
-        skeletonItem.className = 'skeleton skeleton-party-item flex items-center justify-between p-2 border border-gray-200/30 dark:border-neutral-800/30 opacity-60';
-        partyRulesList.appendChild(skeletonItem);
-    }
-}
-
-// --- Core Functions ---
-function handleFile(file) {
-    if (typeof XLSX === 'undefined' || typeof ExcelJS === 'undefined') {
-        showToast("Initializing Excel engines, please wait a moment...", "warning");
-        setTimeout(() => handleFile(file), 500);
-        return;
-    }
-    const validTypes = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
-    if (validTypes.includes(file.type) || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
-        const fileName = file.name;
-        fileNameDisplay.textContent = `Selected: ${fileName}`;
-        showToast(`File "${fileName}" selected successfully!`, 'success');
-        originalFileName = fileName;
-        transformButton.disabled = true; // Wait for schema validation
-        messageText.textContent = ''; showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
-        fileInput.file = file;
-
-        // Show metadata preview
-        document.getElementById('previewEmptyState').classList.add('hidden');
-        document.getElementById('fileStatsContainer').classList.remove('hidden');
-        document.getElementById('schemaValidationContainer').classList.add('hidden'); // Reset schema view
-        document.getElementById('statFileName').textContent = file.name;
-        document.getElementById('statFileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
-        document.getElementById('statTotalRows').textContent = 'Scanning...';
-
-        // Show scanning indicator
-        const scanIndicator = document.getElementById('scanningIndicator');
-        scanIndicator.classList.remove('hidden');
-
-        // Show skeleton loading items immediately
-        showPartyRulesSkeleton();
-        const partySelectorCard = document.getElementById('partySelectorCard');
-        if (partySelectorCard) {
-            partySelectorCard.classList.remove('hidden');
-        }
-
-        // Auto-scan: offload to web worker to keep UI thread 100% responsive
-        const scanReader = new FileReader();
-        scanReader.onload = function(ev) {
-            const fileData = new Uint8Array(ev.target.result);
-            let scanWorker = null;
-            try {
-                scanWorker = new Worker('js/worker.js');
-                scanWorker.onmessage = function(workerEvent) {
-                    scanWorker.terminate();
-                    const result = workerEvent.data;
-                    if (result.success && result.action === 'scan') {
-                        document.getElementById('statTotalRows').textContent = result.rowCount;
-                        uniquePartiesList = result.uniqueParties;
-                        updatePartiesDatalist();
-                        
-                        // Run Schema Validator
-                        validateExcelSchema(result.headers);
-
-                        // Hide scanning indicator, show party selector
-                        scanIndicator.classList.add('hidden');
-                        const partySelectorCard = document.getElementById('partySelectorCard');
-                        if (partySelectorCard) {
-                            partySelectorCard.classList.remove('hidden');
-                            partySelectorCard.classList.add('fade-in');
-                        }
-                        document.getElementById('partyScanCount').textContent = `${uniquePartiesList.length} parties`;
-
-                        renderPartyRulesList();
-                        showToast(`Auto-scanned ${uniquePartiesList.length} parties from file`, 'success');
-                    } else {
-                        runScanFallback(fileData);
-                    }
-                };
-                scanWorker.onerror = function(err) {
-                    console.error('Scan worker crashed, running main thread fallback:', err);
-                    scanWorker.terminate();
-                    runScanFallback(fileData);
-                };
-                const transferBuffer = fileData.slice(0);
-                scanWorker.postMessage({
-                    action: 'scan',
-                    fileData: transferBuffer
-                }, [transferBuffer]);
-            } catch (workerError) {
-                console.error('Failed to create scan worker, running main thread fallback:', workerError);
-                runScanFallback(fileData);
-            }
-            
-            function runScanFallback(data) {
-                try {
-                    // Optimized fallback: disable formulas and styles for high speed
-                    const wb = XLSX.read(data, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
-                    const ws = wb.Sheets[wb.SheetNames[0]];
-                    const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
-                    document.getElementById('statTotalRows').textContent = rawData.length;
-
-                    // Quick transform to extract party names
-                    const scannedParties = new Set();
-                    let headerIdx = -1;
-                    for (let i = 0; i < rawData.length; i++) {
-                        if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
-                        const rowStr = rawData[i].join(',').toUpperCase();
-                        if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerIdx = i; break; }
-                    }
-                    if (headerIdx !== -1) {
-                        let currentParty = '';
-                        for (let i = headerIdx + 1; i < rawData.length; i++) {
-                            const row = rawData[i];
-                            if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
-                            const col0 = row[0] ? String(row[0]).trim() : '';
-                            const partNo = row[2] ? String(row[2]).trim() : '';
-                            const itemName = row[3] ? String(row[3]).trim() : '';
-                            const hasItem = partNo || itemName;
-                            const col0Upper = col0.toUpperCase();
-                            const isOrder = col0Upper.startsWith('APR/SO') || col0Upper.startsWith('DEL');
-                            const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
-                            if (isParty) { currentParty = col0.replace(/\s+/g, ' '); scannedParties.add(currentParty); }
-                        }
-                    }
-
-                    uniquePartiesList = [...scannedParties].sort();
-                    updatePartiesDatalist();
-                    const fallbackHeaders = headerIdx !== -1 ? rawData[headerIdx] : null;
-                    
-                    // Run Schema Validator
-                    validateExcelSchema(fallbackHeaders);
-
-                    // Hide scanning indicator, show party selector
-                    scanIndicator.classList.add('hidden');
-                    const partySelectorCard = document.getElementById('partySelectorCard');
-                    if (partySelectorCard) {
-                        partySelectorCard.classList.remove('hidden');
-                        partySelectorCard.classList.add('fade-in');
-                    }
-                    document.getElementById('partyScanCount').textContent = `${uniquePartiesList.length} parties`;
-
-                    renderPartyRulesList();
-                    showToast(`Auto-scanned ${uniquePartiesList.length} parties from file`, 'success');
-                } catch (scanErr) {
-                    console.error('Scan fallback failed:', scanErr);
-                    scanIndicator.classList.add('hidden');
-                    document.getElementById('statTotalRows').textContent = 'Scan failed';
-                    validateExcelSchema(null);
-                }
-            }
-        };
-        scanReader.onerror = function() {
-            scanIndicator.classList.add('hidden');
-            document.getElementById('statTotalRows').textContent = 'Scan error';
-            validateExcelSchema(null);
-        };
-        scanReader.readAsArrayBuffer(file);
-
-    } else { 
-        showError('errorInvalidFile', null); 
-        transformButton.disabled = true; 
-        fileNameDisplay.textContent = ''; 
-        document.getElementById('previewEmptyState').classList.remove('hidden');
-        document.getElementById('fileStatsContainer').classList.add('hidden');
-        document.getElementById('partySelectorCard').classList.add('hidden');
-        document.getElementById('schemaValidationContainer').classList.add('hidden');
-    }
-}
-
-function validateExcelSchema(headers) {
-    const schemaValidationContainer = document.getElementById('schemaValidationContainer');
-    const schemaChecklist = document.getElementById('schemaChecklist');
-    const schemaAlert = document.getElementById('schemaAlert');
-    const statFormat = document.getElementById('statFormat');
-    
-    if (!schemaValidationContainer || !schemaChecklist || !schemaAlert || !statFormat) return true;
-    
-    schemaValidationContainer.classList.remove('hidden');
-    schemaChecklist.innerHTML = '';
-    
-    const requiredSchema = [
-        { index: 0, label: 'Order No', search: 'ORDER' },
-        { index: 2, label: 'Part No.', search: 'PART' },
-        { index: 3, label: 'Item Name', search: 'ITEM' },
-        { index: 4, label: 'Order Qty', search: 'ORDER' },
-        { index: 5, label: 'Desp Qty', search: 'DESP' },
-        { index: 6, label: 'Balance', search: 'BAL' },
-        { index: 7, label: 'Rate', search: 'RATE' },
-        { index: 8, label: 'Value', search: 'VAL' }
-    ];
-
-    let isValid = true;
-    
-    if (!headers || !Array.isArray(headers)) {
-        isValid = false;
-        requiredSchema.forEach(col => {
-            const item = document.createElement('div');
-            item.className = 'schema-item schema-error';
-            item.innerHTML = `<span class="schema-icon">❌</span><span>${col.label}: Missing</span>`;
-            schemaChecklist.appendChild(item);
-        });
-    } else {
-        requiredSchema.forEach(col => {
-            const headerVal = headers[col.index];
-            const headerStr = headerVal ? String(headerVal).trim().toUpperCase() : '';
-            const matches = headerStr.includes(col.search);
-            
-            const item = document.createElement('div');
-            if (matches) {
-                item.className = 'schema-item schema-ok';
-                item.innerHTML = `<span class="schema-icon">✔</span><span>${col.label}: OK</span>`;
-            } else {
-                isValid = false;
-                item.className = 'schema-item schema-error';
-                const dispVal = headerStr ? `Found "${headerVal.toString().substring(0, 10)}"` : 'Missing';
-                item.innerHTML = `<span class="schema-icon">❌</span><span>${col.label}: ${dispVal}</span>`;
-            }
-            schemaChecklist.appendChild(item);
-        });
-    }
-    
-    if (isValid) {
-        statFormat.textContent = 'SIGFA OK';
-        statFormat.className = 'font-bold text-sm text-green-600 dark:text-green-400';
-        schemaAlert.classList.add('hidden');
-        transformButton.disabled = false;
-    } else {
-        statFormat.textContent = 'SIGFA INVALID';
-        statFormat.className = 'font-bold text-sm text-red-500 dark:text-red-400';
-        schemaAlert.classList.remove('hidden');
-        transformButton.disabled = true;
-    }
-    
-    return isValid;
-}
-
-function updatePartiesDatalist() {
-    const datalist = document.getElementById('scannedPartiesDatalist');
-    if (!datalist) return;
-    datalist.innerHTML = uniquePartiesList.map(party => `<option value="${party.replace(/"/g, '&quot;')}"></option>`).join('');
-}
-
-function showToast(message, type = "success", ttl = 4000) {
-    const toast = document.createElement("div");
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `<span>${message}</span><button class="close" onclick="this.parentElement.remove()">&times;</button>`;
-    toastContainer.appendChild(toast); if (ttl > 0) setTimeout(() => toast.remove(), ttl);
-}
-
-function updateProgressUI(percent, statusText) {
-    progressBar.style.width = `${percent}%`;
-    processingStatus.textContent = `${statusText} (${percent}%)`;
-}
 
 function cancelAnimation() {}
 
-function processFile() {
-    if (!fileInput.file) { showError('errorNoFile', null); return; }
-    transformButton.classList.add('hidden'); processingContainer.classList.remove('hidden');
-    messageText.textContent = ''; showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden'); progressBar.style.width = '0%';
+function updateProgressUI(percent, statusText) {
+    const progressBar = document.getElementById('progressBar');
+    const processingStatus = document.getElementById('processingStatus');
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (processingStatus) processingStatus.textContent = `${statusText} (${percent}%)`;
+}
 
-    // Toggle Dashboard Skeleton Loader state
+function showError(type, err) {
+    const messageText = document.getElementById('messageText');
+    const simpleMessage = document.getElementById('simpleMessage');
+    const showErrorLink = document.getElementById('showErrorLink');
+    const detailedError = document.getElementById('detailedError');
+
+    const errorMessages = {
+        errorNoFile: "Please select an Excel file first.",
+        errorInvalidFile: "Invalid file format. Please upload a .xlsx, .xls, or .csv file.",
+        errorRead: "Error reading the selected file. The file may be corrupt or locked.",
+        errorProcessing: "An error occurred while processing the file. Please verify the schema."
+    };
+
+    const msg = errorMessages[type] || "An unexpected error occurred.";
+    if (messageText) messageText.textContent = msg;
+    if (simpleMessage) {
+        simpleMessage.classList.remove('text-green-500', 'dark:text-green-400');
+        simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
+    }
+
+    if (err && detailedError && showErrorLink) {
+        detailedError.textContent = err.stack || err.message || String(err);
+        showErrorLink.classList.remove('hidden');
+    }
+    if (typeof showToast === 'function') {
+        showToast(msg, 'error');
+    }
+}
+
+// --- Main Processing Pipeline ---
+
+function processFile() {
+    const fileInput = document.getElementById('fileInput');
+    const transformButton = document.getElementById('transformButton');
+    const processingContainer = document.getElementById('processingContainer');
+    const messageText = document.getElementById('messageText');
+    const showErrorLink = document.getElementById('showErrorLink');
+    const detailedError = document.getElementById('detailedError');
+    const progressBar = document.getElementById('progressBar');
+    const excelStylingToggle = document.getElementById('excelStylingToggle');
+    const uploadContainer = document.getElementById('fileDropArea');
+    const downloadContainer = document.getElementById('downloadContainer');
+    const resetButton = document.getElementById('resetButton');
+    const simpleMessage = document.getElementById('simpleMessage');
+
+    if (!fileInput || !fileInput.file) { showError('errorNoFile', null); return; }
+    if (transformButton) transformButton.classList.add('hidden');
+    if (processingContainer) processingContainer.classList.remove('hidden');
+    if (messageText) messageText.textContent = '';
+    if (showErrorLink) showErrorLink.classList.add('hidden');
+    if (detailedError) detailedError.classList.add('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    processingStartTime = Date.now();
+
     const dashSkeleton = document.getElementById('dashboardSkeletonState');
     const dashEmpty = document.getElementById('dashboardEmptyState');
     const dashContent = document.getElementById('dashboardContent');
@@ -566,46 +128,75 @@ function processFile() {
                 transformedData = res.transformed;
                 setFinalDeduplicatedData(res.finalDeduplicated);
                 processedWbout = res.wbout;
+                activeProcessWorker = null;
 
-                // Extract distinct parties and sort alphabetically
                 if (transformedData && transformedData.length > 0) {
                     uniquePartiesList = [...new Set(transformedData.map(r => String(r['PARTY NAME']).trim()))].filter(Boolean).sort();
-                    updatePartiesDatalist();
-                    renderPartyRulesList();
+                    if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
+                    if (typeof renderPartyRulesList === 'function') renderPartyRulesList();
                 }
 
                 setTimeout(() => {
-                    updateFilePreview(originalJsonData, transformedData);
+                    const statTotalRows = document.getElementById('statTotalRows');
+                    if (statTotalRows && originalJsonData) statTotalRows.textContent = originalJsonData.length;
 
                     setTimeout(() => {
-                        processingContainer.classList.add('hidden'); uploadContainer.classList.add('hidden');
-                        downloadContainer.classList.remove('hidden'); downloadContainer.classList.add('fade-in');
-                        resetButton.classList.remove('hidden'); resetButton.classList.add('fade-in');
+                        if (processingContainer) processingContainer.classList.add('hidden');
+                        if (uploadContainer) uploadContainer.classList.add('hidden');
+                        if (downloadContainer) {
+                            downloadContainer.classList.remove('hidden');
+                            downloadContainer.classList.add('fade-in');
+                        }
+                        if (resetButton) {
+                            resetButton.classList.remove('hidden');
+                            resetButton.classList.add('fade-in');
+                        }
                         
+                        const durationSec = ((Date.now() - processingStartTime) / 1000).toFixed(1) + 's';
+                        const postSummary = document.getElementById('postProcessSummary');
+                        if (postSummary) {
+                            const inputCount = originalJsonData ? originalJsonData.length : 0;
+                            const outputCount = finalDeduplicatedData ? finalDeduplicatedData.length : 0;
+                            const transCount = transformedData ? transformedData.length : 0;
+                            const removedCount = Math.max(0, transCount - outputCount);
+                            
+                            const inEl = document.getElementById('summaryInputRows');
+                            const outEl = document.getElementById('summaryOutputRows');
+                            const remEl = document.getElementById('summaryRemovedRows');
+                            const timeEl = document.getElementById('summaryTimeTaken');
+                            if (inEl) inEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(inputCount) : inputCount.toLocaleString('en-IN');
+                            if (outEl) outEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(outputCount) : outputCount.toLocaleString('en-IN');
+                            if (remEl) remEl.textContent = typeof formatIndianNumber === 'function' ? formatIndianNumber(removedCount) : removedCount.toLocaleString('en-IN');
+                            if (timeEl) timeEl.textContent = durationSec;
+                            postSummary.classList.remove('hidden');
+                        }
+
                         currentFilteredData = finalDeduplicatedData;
-                        setFilterType('ALL');
+                        if (typeof setFilterType === 'function') setFilterType('ALL');
                         
-                        // Save to processing history (if not restoring from a past history item)
-                        if (!isRestoringFromHistory) {
+                        if (!isRestoringFromHistory && typeof saveCurrentUploadToHistory === 'function') {
                             const totalRows = originalJsonData ? originalJsonData.length : 0;
                             const uniqueParties = uniquePartiesList ? uniquePartiesList.length : 0;
-                            const totalValue = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + safeParseFloat(r['VALUE']), 0) : 0;
-                            const totalQty = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + safeParseFloat(r['BALANCE']), 0) : 0;
+                            const totalValue = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['VALUE']) : (parseFloat(r['VALUE']) || 0)), 0) : 0;
+                            const totalQty = finalDeduplicatedData ? finalDeduplicatedData.reduce((acc, r) => acc + (typeof safeParseFloat === 'function' ? safeParseFloat(r['BALANCE']) : (parseFloat(r['BALANCE']) || 0)), 0) : 0;
                             saveCurrentUploadToHistory({ totalRows, uniqueParties, totalValue, totalQty });
                         }
-                        isRestoringFromHistory = false; // Reset flag
+                        isRestoringFromHistory = false;
                         
-                        messageText.textContent = "File processed successfully!";
-                        simpleMessage.classList.remove('text-red-500', 'dark:text-red-400'); simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
-                        showToast("File processed successfully!", 'success');
+                        if (messageText) messageText.textContent = "File processed successfully!";
+                        if (simpleMessage) {
+                            simpleMessage.classList.remove('text-red-500', 'dark:text-red-400');
+                            simpleMessage.classList.add('text-green-500', 'dark:text-green-400');
+                        }
+                        if (typeof showToast === 'function') showToast("File processed successfully!", 'success');
                     }, 150);
                 }, 200);
             }
 
-            // Standalone web worker execution path
             let worker = null;
             try {
                 worker = new Worker('js/worker.js');
+                activeProcessWorker = worker;
 
                 worker.onmessage = function(workerEvent) {
                     const result = workerEvent.data;
@@ -614,19 +205,21 @@ function processFile() {
                         return;
                     }
                     worker.terminate();
+                    activeProcessWorker = null;
 
                     if (result.success) {
                         handleSuccess(result);
                     } else {
                         showError('errorProcessing', new Error(result.error));
-                        processingContainer.classList.add('hidden');
-                        transformButton.classList.remove('hidden');
+                        if (processingContainer) processingContainer.classList.add('hidden');
+                        if (transformButton) transformButton.classList.remove('hidden');
                     }
                 };
 
                 worker.onerror = function(err) {
                     console.error("Worker crash, running main thread fallback:", err);
                     worker.terminate();
+                    activeProcessWorker = null;
                     runFallback();
                 };
 
@@ -692,367 +285,115 @@ function processFile() {
                         }, 50);
                     } catch (fallbackError) {
                         showError('errorProcessing', fallbackError);
-                        processingContainer.classList.add('hidden');
-                        transformButton.classList.remove('hidden');
+                        if (processingContainer) processingContainer.classList.add('hidden');
+                        if (transformButton) transformButton.classList.remove('hidden');
                     }
                 }, 50);
             }
         }, 300);
     };
-    reader.onerror = function(e) { cancelAnimation(); showError('errorRead', e.target.error); processingContainer.classList.add('hidden'); transformButton.classList.remove('hidden'); };
+    reader.onerror = function(e) {
+        cancelAnimation();
+        showError('errorRead', e.target.error);
+        if (processingContainer) processingContainer.classList.add('hidden');
+        if (transformButton) transformButton.classList.remove('hidden');
+    };
     reader.readAsArrayBuffer(file);
 }
 
-function showError(key, err) {
-    const errorMessages = {
-        errorInvalidFile: "Please select a valid Excel file (.xlsx, .xls, .csv).",
-        errorNoFile: "Please select a file first.",
-        errorRead: "Error reading file. Please check for corruption.",
-        errorProcessing: "An error occurred during transformation. Please check sheet columns.",
-        errorNoData: "No data loaded. Please process a valid sheet first."
-    };
-    const msg = errorMessages[key] || key || "Error occurred";
-    showToast(msg, 'error');
-    messageText.textContent = msg;
-    simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
-    if (err) { detailedError.textContent = err.stack || err.message || err; showErrorLink.classList.remove('hidden'); showErrorLink.onclick = (e) => { e.preventDefault(); detailedError.classList.toggle('hidden'); }; }
-}
-
-async function downloadTransformedFile() {
-    if (!processedWbout) return;
-    downloadExcelButton.disabled = true; 
-    downloadExcelButton.innerHTML = `<span class="flex items-center justify-center"><span>Generating...</span><span class="loading-dots"><span></span><span></span><span></span></span></span>`; 
-    showToast("Generating Excel file...", 'warning');
-    
-    setTimeout(async () => { 
-        try {
-            const baseName = originalFileName.lastIndexOf('.') > -1 ? originalFileName.substring(0, originalFileName.lastIndexOf('.')) : originalFileName;
-            const defaultName = `${baseName}_transformed.xlsx`;
-            
-            if (window.electronAPI) {
-                const savedPath = await window.electronAPI.saveFile({
-                    defaultName: defaultName,
-                    data: processedWbout
-                });
-                if (savedPath) showToast(`Excel saved successfully! ✅`, 'success');
-                else showToast("Save cancelled. ❌", 'warning');
-            } else {
-                const blob = new Blob([processedWbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = defaultName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                showToast("Excel file downloaded successfully!", 'success');
-            }
-        } catch (error) {
-            console.error(error);
-            showError('errorProcessing', error);
-        } finally {
-            downloadExcelButton.disabled = false;
-            downloadExcelButton.innerHTML = originalExcelButtonHTML || "Download Transformed Excel File";
-        }
-    }, 50);
-}
-
 function resetUI() {
-    cancelAnimation(); fileInput.value = ''; fileInput.file = null;
-    originalJsonData = null; transformedData = null; setFinalDeduplicatedData(null); currentFilteredData = null;
-    originalFileName = ''; processedWbout = null; uploadedFileData = null;
-    fileNameDisplay.textContent = ''; messageText.textContent = '';
-    simpleMessage.classList.remove('text-green-500', 'dark:text-green-400'); simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
-    showErrorLink.classList.add('hidden'); detailedError.classList.add('hidden');
-    
-    // Handle visibility
-    uploadContainer.classList.remove('hidden');
-    transformButton.classList.remove('hidden');
+    cancelAnimation();
+    const fileInput = document.getElementById('fileInput');
+    const fileNameDisplay = document.getElementById('fileName');
+    const messageText = document.getElementById('messageText');
+    const simpleMessage = document.getElementById('simpleMessage');
+    const showErrorLink = document.getElementById('showErrorLink');
+    const detailedError = document.getElementById('detailedError');
+    const uploadContainer = document.getElementById('fileDropArea');
+    const transformButton = document.getElementById('transformButton');
+    const downloadContainer = document.getElementById('downloadContainer');
+    const resetButton = document.getElementById('resetButton');
+    const processingContainer = document.getElementById('processingContainer');
+    const progressBar = document.getElementById('progressBar');
+    const searchInput = document.getElementById('searchInput');
 
-    // Reset File Preview Sidebar
-    document.getElementById('previewEmptyState').classList.remove('hidden');
-    document.getElementById('fileStatsContainer').classList.add('hidden');
-    document.getElementById('statFileName').textContent = '';
-    document.getElementById('statFileSize').textContent = '';
-    document.getElementById('statTotalRows').textContent = '0';
-
-    transformButton.disabled = true;
-    document.getElementById('schemaValidationContainer').classList.add('hidden');
-    downloadContainer.classList.add('hidden'); downloadContainer.classList.remove('fade-in');
-    resetButton.classList.add('hidden'); resetButton.classList.remove('fade-in');
-    processingContainer.classList.add('hidden'); progressBar.style.width = '0%';
+    if (fileInput) { fileInput.value = ''; fileInput.file = null; }
+    originalJsonData = null;
+    transformedData = null;
+    setFinalDeduplicatedData(null);
+    currentFilteredData = null;
+    originalFileName = '';
+    processedWbout = null;
+    uploadedFileData = null;
     
-    // Hide Dashboard Content, Show Empty State
-    document.getElementById('dashboardContent').classList.add('hidden');
+    if (fileNameDisplay) fileNameDisplay.textContent = '';
+    if (messageText) messageText.textContent = '';
+    if (simpleMessage) {
+        simpleMessage.classList.remove('text-green-500', 'dark:text-green-400');
+        simpleMessage.classList.add('text-red-500', 'dark:text-red-400');
+    }
+    if (showErrorLink) showErrorLink.classList.add('hidden');
+    if (detailedError) detailedError.classList.add('hidden');
+    
+    if (uploadContainer) uploadContainer.classList.remove('hidden');
+    if (transformButton) {
+        transformButton.classList.remove('hidden');
+        transformButton.disabled = true;
+    }
+
+    const previewEmpty = document.getElementById('previewEmptyState');
+    const fileStats = document.getElementById('fileStatsContainer');
+    const schemaValidation = document.getElementById('schemaValidationContainer');
+    const postSummary = document.getElementById('postProcessSummary');
+    const statFileName = document.getElementById('statFileName');
+    const statFileSize = document.getElementById('statFileSize');
+    const statTotalRows = document.getElementById('statTotalRows');
+
+    if (previewEmpty) previewEmpty.classList.remove('hidden');
+    if (fileStats) fileStats.classList.add('hidden');
+    if (schemaValidation) schemaValidation.classList.add('hidden');
+    if (postSummary) postSummary.classList.add('hidden');
+    if (statFileName) statFileName.textContent = '';
+    if (statFileSize) statFileSize.textContent = '';
+    if (statTotalRows) statTotalRows.textContent = '0';
+
+    if (downloadContainer) downloadContainer.classList.add('hidden');
+    if (resetButton) resetButton.classList.add('hidden');
+    if (processingContainer) processingContainer.classList.add('hidden');
+    if (progressBar) progressBar.style.width = '0%';
+    
+    const dashContent = document.getElementById('dashboardContent');
     const dashSkeleton = document.getElementById('dashboardSkeletonState');
+    const dashEmpty = document.getElementById('dashboardEmptyState');
+    if (dashContent) dashContent.classList.add('hidden');
     if (dashSkeleton) dashSkeleton.classList.add('hidden');
-    document.getElementById('dashboardEmptyState').classList.remove('hidden');
+    if (dashEmpty) dashEmpty.classList.remove('hidden');
     
-    if (chartPartiesInstance) chartPartiesInstance.destroy(); if (chartItemsInstance) chartItemsInstance.destroy(); if (chartTrendInstance) chartTrendInstance.destroy(); if (chartDistributionInstance) chartDistributionInstance.destroy(); if (chartAgingInstance) chartAgingInstance.destroy();
-    searchInput.value = '';
+    if (chartPartiesInstance) { chartPartiesInstance.destroy(); chartPartiesInstance = null; }
+    if (chartItemsInstance) { chartItemsInstance.destroy(); chartItemsInstance = null; }
+    if (chartTrendInstance) { chartTrendInstance.destroy(); chartTrendInstance = null; }
+    if (chartDistributionInstance) { chartDistributionInstance.destroy(); chartDistributionInstance = null; }
+    if (chartAgingInstance) { chartAgingInstance.destroy(); chartAgingInstance = null; }
+    
+    if (searchInput) searchInput.value = '';
 
-    // Reset KPI displays to baseline values
-    dashTotalValueDisplay.textContent = '₹0';
-    dashTotalQtyDisplay.textContent = '0';
-    dashUniqueItemsDisplay.textContent = '0';
-    dashUniquePartiesDisplay.textContent = '0';
+    const dashTotalValueDisplay = document.getElementById('dashTotalValueDisplay');
+    const dashTotalQtyDisplay = document.getElementById('dashTotalQtyDisplay');
+    const dashUniqueItemsDisplay = document.getElementById('dashUniqueItemsDisplay');
+    const dashUniquePartiesDisplay = document.getElementById('dashUniquePartiesDisplay');
+    if (dashTotalValueDisplay) dashTotalValueDisplay.textContent = '₹0';
+    if (dashTotalQtyDisplay) dashTotalQtyDisplay.textContent = '0';
+    if (dashUniqueItemsDisplay) dashUniqueItemsDisplay.textContent = '0';
+    if (dashUniquePartiesDisplay) dashUniquePartiesDisplay.textContent = '0';
 
-    // Reset price mode selection to MRP
-    setPriceMode('MRP');
+    if (typeof setPriceMode === 'function') setPriceMode('MRP');
 
-    // Reset party selector
     uniquePartiesList = [];
-    updatePartiesDatalist();
-    document.getElementById('partySelectorCard').classList.add('hidden');
-    if (partyRulesList) partyRulesList.innerHTML = `<p class="italic text-gray-400 dark:text-gray-500 text-center py-4">Scanning...</p>`;
-    if (partySearch) partySearch.value = '';
-}
-
-// --- DASHBOARD & FILTER LOGIC ---
-function setFilterType(type) {
-    currentFilterType = type;
-    [filterAll, filterDel, filterApr].forEach(btn => {
-        btn.className = "px-3 py-1 text-sm font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
-    });
-    const activeBtn = type === 'ALL' ? filterAll : (type === 'DEL' ? filterDel : filterApr);
-    activeBtn.className = "px-3 py-1 text-sm font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
-    applyDashboardFilters(true);
-}
-
-function applyDashboardFilters(immediateCharts = false) {
-    if (!finalDeduplicatedData) return;
-    const query = searchInput.value.toLowerCase().trim();
-    currentFilteredData = finalDeduplicatedData.filter(row => {
-        let matchesType = true;
-        if (currentFilterType === 'DEL') matchesType = row._isDel;
-        else if (currentFilterType === 'APR') matchesType = row._isApr;
-        
-        let matchesSearch = true;
-        if (query) {
-            matchesSearch = row._searchStr && row._searchStr.includes(query);
-        }
-        return matchesType && matchesSearch;
-    });
-    updateDashboardUI(currentFilteredData, immediateCharts);
-}
-
-function loadNextRowChunk() {
-    if (loadedRowCount >= dashboardTableRows.length) return;
-    const nextChunk = dashboardTableRows.slice(loadedRowCount, loadedRowCount + TABLE_CHUNK_SIZE);
-    const fragment = document.createDocumentFragment();
-    
-    nextChunk.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.className = "bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600";
-        
-        tr.innerHTML = `
-            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white truncate" title="${item.orderNo}">${item.orderNo}</td>
-            <td class="px-4 py-3">${item.dateRaw || 'N/A'}</td>
-            <td class="px-4 py-3 text-red-500 font-semibold">${item.diffDays}</td>
-            <td class="px-4 py-3 truncate" title="${item.pName}">${item.pName}</td>
-            <td class="px-4 py-3 truncate" title="${item.iName}">${item.iName}</td>
-            <td class="px-4 py-3 text-right">${item.qty}</td>
-            <td class="px-4 py-3 text-right">₹${item.val.toLocaleString('en-IN')}</td>
-        `;
-        fragment.appendChild(tr);
-    });
-    
-    dataTableBody.appendChild(fragment);
-    loadedRowCount += nextChunk.length;
-}
-
-function updateDashboardUI(data, immediateCharts = false) {
-    if (!data) return;
-    document.getElementById('dashboardEmptyState').classList.add('hidden');
-    const dashSkeleton = document.getElementById('dashboardSkeletonState');
-    if (dashSkeleton) dashSkeleton.classList.add('hidden');
-    document.getElementById('dashboardContent').classList.remove('hidden');
-    
-    let totalValue = 0, totalQty = 0;
-    const uniqueItems = new Set();
-    const uniqueParties = new Set();
-    const partiesValueMap = {};
-    const itemsQtyMap = {};
-    const dateCountMap = {};
-    
-    // Aging Buckets
-    const agingBuckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
-    
-    let delCount = 0, aprCount = 0;
-    const today = new Date();
-
-    dataTableBody.innerHTML = '';
-    dashboardTableRows = [];
-    loadedRowCount = 0;
-
-    if (data.length === 0) tableEmptyState.classList.remove('hidden'); else tableEmptyState.classList.add('hidden');
-
-    data.forEach(row => {
-        const val = safeParseFloat(row['VALUE']) * (1 - currentDiscount);
-        const qty = safeParseFloat(row['BALANCE']) || safeParseFloat(row['ORDER QTY']);
-        const pName = row['PARTY NAME'] || 'Unknown';
-        const iName = row['ITEM NAME'] || 'Unknown';
-        const orderNo = String(row['ORDER NO']).toUpperCase();
-        const dateRaw = row['DATE'];
-
-        totalValue += val; totalQty += qty; uniqueItems.add(iName); uniqueParties.add(pName);
-        partiesValueMap[pName] = (partiesValueMap[pName] || 0) + val;
-        itemsQtyMap[iName] = (itemsQtyMap[iName] || 0) + qty;
-
-        if (orderNo.startsWith('DEL')) delCount++; else if (orderNo.startsWith('APR')) aprCount++;
-
-        const dateObj = dateRaw ? parseDMY(dateRaw) : new Date(0);
-        if (dateObj.getTime() !== 0) {
-            const isoDate = getLocalDateString(dateObj);
-            dateCountMap[isoDate] = (dateCountMap[isoDate] || 0) + 1;
-            
-            const diffTime = Math.abs(today - dateObj);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            
-            // Populate Aging Buckets
-            if (diffDays <= 30) agingBuckets['0-30']++;
-            else if (diffDays <= 60) agingBuckets['31-60']++;
-            else if (diffDays <= 90) agingBuckets['61-90']++;
-            else agingBuckets['90+']++;
-        }
-
-        let diffDays = 0;
-        if (dateObj.getTime() !== 0) {
-            const diffTime = Math.abs(today - dateObj);
-            diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        }
-
-        dashboardTableRows.push({
-            orderNo, dateRaw, diffDays, pName, iName, qty, val
-        });
-    });
-
-    // Render first chunk of rows
-    loadNextRowChunk();
-
-    animateValue(dashTotalValueDisplay, totalValue, {
-        format: (val) => val.toLocaleString('en-IN', { maximumFractionDigits: 0, style: 'currency', currency: 'INR' })
-    });
-    animateValue(dashTotalQtyDisplay, totalQty);
-    animateValue(dashUniqueItemsDisplay, uniqueItems.size);
-    animateValue(dashUniquePartiesDisplay, uniqueParties.size);
-
-    const sortedParties = Object.entries(partiesValueMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const sortedItems = Object.entries(itemsQtyMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const sortedDates = Object.keys(dateCountMap).sort();
-    const trendData = sortedDates.map(d => dateCountMap[d]);
-    const trendLabels = sortedDates.map(d => { const p = d.split('-'); return `${p[2]}-${p[1]}`; });
-
-    if (immediateCharts) {
-        debouncedRenderCharts.cancel();
-        renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
-    } else {
-        debouncedRenderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
-    }
-}
-
-const debouncedRenderCharts = debounce((sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets) => {
-    renderCharts(sortedParties, sortedItems, trendLabels, trendData, delCount, aprCount, agingBuckets);
-}, 350);
-
-function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
-    const ctxParties = document.getElementById('chartParties').getContext('2d');
-    const ctxItems = document.getElementById('chartItems').getContext('2d');
-    const ctxTrend = document.getElementById('chartTrend').getContext('2d');
-    const ctxDist = document.getElementById('chartDistribution').getContext('2d');
-    const ctxAging = document.getElementById('chartAging').getContext('2d'); 
-
-    const isDark = htmlElement.classList.contains('dark');
-    const textColor = isDark ? '#e5e7eb' : '#374151';
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-
-    const partiesLabels = parties.map(d => d[0].substring(0, 15) + '...');
-    const partiesData = parties.map(d => d[1]);
-    if (chartPartiesInstance) {
-        chartPartiesInstance.data.labels = partiesLabels;
-        chartPartiesInstance.data.datasets[0].data = partiesData;
-        chartPartiesInstance.options.scales.y.ticks.color = textColor;
-        chartPartiesInstance.options.scales.y.grid.color = gridColor;
-        chartPartiesInstance.options.scales.x.ticks.color = textColor;
-        chartPartiesInstance.update('none');
-    } else {
-        chartPartiesInstance = new Chart(ctxParties, { type: 'bar', data: { labels: partiesLabels, datasets: [{ label: 'Pending Value (₹)', data: partiesData, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
-    }
-
-    const itemsLabels = items.map(d => d[0].substring(0, 15) + '...');
-    const itemsData = items.map(d => d[1]);
-    if (chartItemsInstance) {
-        chartItemsInstance.data.labels = itemsLabels;
-        chartItemsInstance.data.datasets[0].data = itemsData;
-        chartItemsInstance.options.scales.x.ticks.color = textColor;
-        chartItemsInstance.options.scales.x.grid.color = gridColor;
-        chartItemsInstance.options.scales.y.ticks.color = textColor;
-        chartItemsInstance.update('none');
-    } else {
-        chartItemsInstance = new Chart(ctxItems, { type: 'bar', indexAxis: 'y', data: { labels: itemsLabels, datasets: [{ label: 'Qty', data: itemsData, backgroundColor: 'rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: textColor }, grid: { color: gridColor } }, y: { ticks: { color: textColor }, grid: { display: false } } } } });
-    }
-
-    if (chartTrendInstance) {
-        chartTrendInstance.data.labels = dates;
-        chartTrendInstance.data.datasets[0].data = trendCounts;
-        chartTrendInstance.options.scales.y.ticks.color = textColor;
-        chartTrendInstance.options.scales.y.grid.color = gridColor;
-        chartTrendInstance.options.scales.x.ticks.color = textColor;
-        chartTrendInstance.update('none');
-    } else {
-        chartTrendInstance = new Chart(ctxTrend, { type: 'line', data: { labels: dates, datasets: [{ label: 'Orders', data: trendCounts, borderColor: 'rgba(168, 85, 247, 1)', backgroundColor: 'rgba(168, 85, 247, 0.1)', fill: true, tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } } } });
-    }
-
-    const distData = [delC, aprC, Math.max(0, (finalDeduplicatedData ? finalDeduplicatedData.length : 0) - delC - aprC)];
-    if (chartDistributionInstance) {
-        chartDistributionInstance.data.datasets[0].data = distData;
-        chartDistributionInstance.update('none');
-    } else {
-        chartDistributionInstance = new Chart(ctxDist, { type: 'doughnut', data: { labels: ['DEL (Local)', 'APR (Outstation)', 'Other'], datasets: [{ data: distData, backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(249, 115, 22, 0.7)', 'rgba(156, 163, 175, 0.5)'], borderColor: ['rgba(59, 130, 246, 1)', 'rgba(249, 115, 22, 1)', 'rgba(156, 163, 175, 1)'], borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textColor } } } } });
-    }
-
-    const agingData = [aging['0-30'], aging['31-60'], aging['61-90'], aging['90+']];
-    if (chartAgingInstance) {
-        chartAgingInstance.data.datasets[0].data = agingData;
-        chartAgingInstance.options.scales.y.ticks.color = textColor;
-        chartAgingInstance.options.scales.y.grid.color = gridColor;
-        chartAgingInstance.options.scales.x.ticks.color = textColor;
-        chartAgingInstance.update('none');
-    } else {
-        chartAgingInstance = new Chart(ctxAging, {
-            type: 'bar',
-            data: {
-                labels: ['0-30 Days', '31-60 Days', '61-90 Days', '90+ Days'],
-                datasets: [{
-                    label: 'Orders',
-                    data: agingData,
-                    backgroundColor: [
-                        'rgba(34, 197, 94, 0.6)',
-                        'rgba(59, 130, 246, 0.6)',
-                        'rgba(249, 115, 22, 0.6)',
-                        'rgba(239, 68, 68, 0.6)'
-                    ],
-                    borderColor: [
-                        'rgba(34, 197, 94, 1)',
-                        'rgba(59, 130, 246, 1)',
-                        'rgba(249, 115, 22, 1)',
-                        'rgba(239, 68, 68, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
-                    x: { ticks: { color: textColor }, grid: { display: false } }
-                }
-            }
-        });
-    }
+    if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
+    const partySelectorCard = document.getElementById('partySelectorCard');
+    if (partySelectorCard) partySelectorCard.classList.add('hidden');
+    const partyRulesList = document.getElementById('partyRulesList');
+    if (partyRulesList) partyRulesList.textContent = '';
 }
 
 async function persistConfigValue(key, value) {
@@ -1065,36 +406,18 @@ async function persistConfigValue(key, value) {
     }
 }
 
-function toggleTheme() { const newTheme = htmlElement.classList.contains('dark') ? 'light' : 'dark'; persistConfigValue('theme', newTheme); applyTheme(newTheme); }
-
-function applyTheme(theme) {
-    if (theme === 'dark') { 
-        htmlElement.classList.add('dark'); 
-        themeIconLight.classList.add('hidden'); 
-        themeIconDark.classList.remove('hidden'); 
-        if (themeToggleSwitch) themeToggleSwitch.checked = true;
-    } else { 
-        htmlElement.classList.remove('dark'); 
-        themeIconLight.classList.remove('hidden'); 
-        themeIconDark.classList.add('hidden'); 
-        if (themeToggleSwitch) themeToggleSwitch.checked = false;
-    }
-    updateThemeToggleTitle(theme);
-    if (finalDeduplicatedData) updateDashboardUI(currentFilteredData);
-}
-
-function updateThemeToggleTitle(theme) {
-    const currentTheme = theme || (htmlElement.classList.contains('dark') ? 'dark' : 'light');
-    themeToggle.title = currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-}
+// --- Application Initialization Coordinator ---
 
 async function initializeApp() {
-    if (downloadExcelButton) {
-        originalExcelButtonHTML = downloadExcelButton.innerHTML;
+    let versionStr = '3.30.18';
+    if (window.electronAPI && window.electronAPI.getAppVersion) {
+        try {
+            versionStr = await window.electronAPI.getAppVersion();
+        } catch (e) {
+            console.warn("Could not retrieve version from electronAPI:", e);
+        }
     }
-    let config = {};
-    const versionStr = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev';
-    // Populate all version display elements from the single source of truth
+    
     document.title = `Pending Order Maker v${versionStr}`;
     const titlebarVer = document.getElementById('titlebarVersion');
     if (titlebarVer) titlebarVer.textContent = `Prime Pending Pro v${versionStr}`;
@@ -1104,34 +427,19 @@ async function initializeApp() {
     if (aboutLabel) aboutLabel.textContent = `v${versionStr} (Talha)`;
     const watermarkEl = document.getElementById('watermark');
     if (watermarkEl) watermarkEl.title = `Prime Pending Pro v${versionStr}`;
+
+    let config = {};
     if (window.electronAPI) {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
         const verDisp = document.getElementById('versionDisplay');
         if (verDisp) verDisp.textContent = `v${versionStr} (Desktop)`;
-        
-        // Bind custom window controls
-        const winMin = document.getElementById('winMin');
-        const winMax = document.getElementById('winMax');
-        const winClose = document.getElementById('winClose');
-        
-        if (winMin) winMin.addEventListener('click', () => window.electronAPI.minimize());
-        if (winMax) winMax.addEventListener('click', () => window.electronAPI.maximize());
-        if (winClose) winClose.addEventListener('click', () => window.electronAPI.close());
-        
         config = await window.electronAPI.loadConfig() || {};
     } else {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} • Created by Talha`;
         const verDisp = document.getElementById('versionDisplay');
         if (verDisp) verDisp.textContent = `v${versionStr}`;
-        const winMin = document.getElementById('winMin');
-        const winMax = document.getElementById('winMax');
-        const winClose = document.getElementById('winClose');
-        if (winMin) winMin.style.display = 'none';
-        if (winMax) winMax.style.display = 'none';
-        if (winClose) winClose.style.display = 'none';
-        
         try {
             config = {
                 theme: localStorage.getItem('theme'),
@@ -1148,8 +456,8 @@ async function initializeApp() {
             config = {};
         }
     }
-    
-    // Set dynamic deduplication rules from loaded configuration with uppercase normalization
+
+    // Set deduplication rules from loaded configuration
     if (config.excludedParties && Array.isArray(config.excludedParties)) {
         excludedParties = config.excludedParties.map(p => String(p).toUpperCase());
     }
@@ -1168,665 +476,128 @@ async function initializeApp() {
             partyMerges[key.toUpperCase()] = config.partyMerges[key];
         }
     }
-    
-    // Recompile initial partyRulesMap
+
     partyRulesMap = {};
     excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
     deduplicateParties.forEach(p => partyRulesMap[p] = 'keep-latest');
     specialParties.forEach(p => partyRulesMap[p] = 'marka');
     fullyExcludedParties.forEach(p => partyRulesMap[p] = 'exclude');
-    
-    // Initialize settings visual chips and inputs
-    renderChipsInUI();
-    setupChipInputListeners();
-    
-    const savedTheme = config.theme; 
-    let initialTheme = savedTheme === 'dark' ? 'dark' : (savedTheme === 'light' ? 'light' : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')); 
-    applyTheme(initialTheme);
-    
-    if (config.sidebarCollapsed) {
-        if (sidebar) sidebar.classList.add('collapsed');
-    }
 
+    if (typeof renderChipsInUI === 'function') renderChipsInUI();
+    if (typeof setupChipInputListeners === 'function') setupChipInputListeners();
+
+    // Initialize modules
+    if (typeof initializeNavigation === 'function') initializeNavigation();
+    if (typeof initializeSettingsUI === 'function') initializeSettingsUI();
+    if (typeof initializeHistory === 'function') initializeHistory();
+    if (typeof initializeDashboard === 'function') initializeDashboard();
+    if (typeof initializeDragAndDrop === 'function') initializeDragAndDrop();
+
+    const savedTheme = config.theme;
+    let initialTheme = savedTheme === 'dark' ? 'dark' : (savedTheme === 'light' ? 'light' : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    if (typeof applyTheme === 'function') applyTheme(initialTheme);
+
+    const sidebar = document.getElementById('sidebar');
+    if (config.sidebarCollapsed && sidebar) {
+        sidebar.classList.add('collapsed');
+    }
 
     if (window.lucide) {
         window.lucide.createIcons();
-        // Re-assign dynamic elements after Lucide DOM replacement
-        themeIconLight = document.getElementById('themeIconLight');
-        themeIconDark = document.getElementById('themeIconDark');
-        updateSpin = document.getElementById('updateSpin');
     }
+
+    const excelStylingToggle = document.getElementById('excelStylingToggle');
     if (excelStylingToggle) {
         excelStylingToggle.checked = config.enableExcelStyling !== false;
     }
+
     const performanceModeToggle = document.getElementById('performanceModeToggle');
     if (performanceModeToggle) {
         performanceModeToggle.checked = config.performanceMode === true;
         if (config.performanceMode === true) {
-            htmlElement.classList.add('low-spec');
+            document.documentElement.classList.add('low-spec');
         }
     }
-    
-    // Initialize discount price mode UI listeners
-    setupDiscountListeners();
 
-    // Dynamically load heavy spreadsheet libraries in the background to ensure instant app window startup
-    setTimeout(() => {
-        Promise.all([
-            loadScript('./libs/xlsx.full.min.js'),
-            loadScript('./libs/exceljs.min.js')
-        ]).then(() => {
-            console.log("Excel libraries loaded dynamically in the background.");
-        }).catch(err => {
-            console.error("Error loading Excel libraries:", err);
-        });
-    }, 100);
-}
-
-// Bind UI event listeners
-browseButton.addEventListener('click', triggerFileSelection);
-
-// Bind scroll listener for lazy loading detailed order list
-const dataTableContainer = document.querySelector('.data-table-container');
-if (dataTableContainer) {
-    dataTableContainer.addEventListener('scroll', () => {
-        // If scrolled within 40px of bottom, load next chunk
-        if (dataTableContainer.scrollTop + dataTableContainer.clientHeight >= dataTableContainer.scrollHeight - 40) {
-            loadNextRowChunk();
+    const downloadExcelButton = document.getElementById('downloadExcelButton');
+    if (downloadExcelButton) {
+        originalExcelButtonHTML = downloadExcelButton.innerHTML;
+        if (typeof downloadTransformedFile === 'function') {
+            downloadExcelButton.addEventListener('click', downloadTransformedFile);
         }
-    });
-}
-
-if (excelStylingToggle) {
-    excelStylingToggle.addEventListener('change', () => {
-        persistConfigValue('enableExcelStyling', excelStylingToggle.checked);
-    });
-}
-const performanceModeToggle = document.getElementById('performanceModeToggle');
-if (performanceModeToggle) {
-    performanceModeToggle.addEventListener('change', () => {
-        persistConfigValue('performanceMode', performanceModeToggle.checked);
-        if (performanceModeToggle.checked) {
-            htmlElement.classList.add('low-spec');
-        } else {
-            htmlElement.classList.remove('low-spec');
-        }
-    });
-}
-fileDropArea.addEventListener('click', (e) => { if (e.target === fileDropArea || fileDropArea.contains(e.target) && !browseButton.contains(e.target)) triggerFileSelection(); });
-let dropAreaRect = null;
-fileDropArea.addEventListener('mouseenter', () => {
-    dropAreaRect = fileDropArea.getBoundingClientRect();
-});
-fileDropArea.addEventListener('mousemove', (e) => {
-    if (!dropAreaRect) {
-        dropAreaRect = fileDropArea.getBoundingClientRect();
     }
-    const x = e.clientX - dropAreaRect.left;
-    const y = e.clientY - dropAreaRect.top;
-    fileDropArea.style.setProperty('--mouse-x', `${x}px`);
-    fileDropArea.style.setProperty('--mouse-y', `${y}px`);
-});
-fileDropArea.addEventListener('dragover', (e) => { e.preventDefault(); fileDropArea.classList.add('drag-active', 'border-blue-500', 'dark:border-blue-400'); });
-fileDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); fileDropArea.classList.remove('drag-active', 'border-blue-500', 'dark:border-blue-400'); });
-fileDropArea.addEventListener('drop', (e) => { e.preventDefault(); fileDropArea.classList.remove('drag-active', 'border-blue-500', 'dark:border-blue-400'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
-fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
-transformButton.addEventListener('click', processFile);
-downloadExcelButton.addEventListener('click', downloadTransformedFile);
-resetButton.addEventListener('click', resetUI);
 
-themeToggle.addEventListener('click', toggleTheme);
-if (themeToggleSwitch) {
-    themeToggleSwitch.addEventListener('change', toggleTheme);
-}
+    const transformButton = document.getElementById('transformButton');
+    if (transformButton) transformButton.addEventListener('click', processFile);
 
-if (exportRulesBtn) exportRulesBtn.addEventListener('click', exportRulesConfig);
-if (importRulesBtn) importRulesBtn.addEventListener('click', () => importRulesInput.click());
-if (importRulesInput) importRulesInput.addEventListener('change', importRulesConfig);
+    const resetButton = document.getElementById('resetButton');
+    if (resetButton) resetButton.addEventListener('click', resetUI);
 
-if (hamburgerBtn && sidebar) {
-    hamburgerBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('collapsed');
-        const isCollapsed = sidebar.classList.contains('collapsed');
-        persistConfigValue('sidebarCollapsed', isCollapsed);
-    });
-}
-
-searchInput.addEventListener('input', debounce(applyDashboardFilters, 150));
-filterAll.addEventListener('click', () => setFilterType('ALL'));
-filterDel.addEventListener('click', () => setFilterType('DEL'));
-filterApr.addEventListener('click', () => setFilterType('APR'));
-
-// Settings Sub-Tabs Switching
-const settingsNavItems = document.querySelectorAll('.settings-nav-item');
-const settingsPanes = document.querySelectorAll('.settings-pane');
-
-settingsNavItems.forEach(item => {
-    item.addEventListener('click', () => {
-        settingsNavItems.forEach(nav => nav.classList.remove('active'));
-        item.classList.add('active');
-
-        const tabName = item.dataset.settingsTab;
-        settingsPanes.forEach(pane => {
-            if (pane.id === `settingsPane${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`) {
-                pane.classList.remove('hidden');
-            } else {
-                pane.classList.add('hidden');
+    const cancelProcessButton = document.getElementById('cancelProcessButton');
+    if (cancelProcessButton) {
+        cancelProcessButton.addEventListener('click', () => {
+            if (activeProcessWorker) {
+                activeProcessWorker.terminate();
+                activeProcessWorker = null;
             }
-        });
-    });
-});
+            const processingContainer = document.getElementById('processingContainer');
+            const transformButton = document.getElementById('transformButton');
+            const fileInput = document.getElementById('fileInput');
+            const progressBar = document.getElementById('progressBar');
+            const messageText = document.getElementById('messageText');
+            const simpleMessage = document.getElementById('simpleMessage');
 
-// Auto-Updater Renderer Logic
-const updateBtnText = document.getElementById('updateBtnText');
-const updateStatusText = document.getElementById('updateStatusText');
-const updateProgressContainer = document.getElementById('updateProgressContainer');
-const updateProgressBar = document.getElementById('updateProgressBar');
-const updateProgressPercent = document.getElementById('updateProgressPercent');
-const whatsNewContainer = document.getElementById('whatsNewContainer');
-const whatsNewVersion = document.getElementById('whatsNewVersion');
-const whatsNewContent = document.getElementById('whatsNewContent');
-
-let appUpdateState = 'idle'; 
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function fetchFullReleaseNotes(currentVersion, newVersion) {
-    const currentTag = currentVersion.startsWith('v') ? currentVersion : `v${currentVersion}`;
-    const newTag = newVersion.startsWith('v') ? newVersion : `v${newVersion}`;
-    
-    // Default fallback in case the API fetch fails or is rate limited
-    const fallbackLink = `<div class="text-xs text-gray-700 dark:text-gray-300">
-                              <strong>Full Changelog:</strong> <a href="https://github.com/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}" target="_blank" class="text-blue-500 hover:underline font-semibold">${currentTag}...${newTag}</a>
-                          </div>`;
-                          
-    if (whatsNewContent) {
-        whatsNewContent.innerHTML = `<p class="text-xs text-gray-500 italic animate-pulse">Loading release details...</p>`;
-    }
-    
-    fetch(`https://api.github.com/repos/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}`)
-        .then(res => {
-            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-            return res.json();
-        })
-        .then(data => {
-            if (data && data.commits && Array.isArray(data.commits) && data.commits.length > 0) {
-                const commitMsgs = data.commits
-                    .map(c => c.commit.message.split('\n')[0].trim())
-                    .filter(msg => {
-                        if (!msg) return false;
-                        const msgUpper = msg.toUpperCase();
-                        return !msgUpper.startsWith('MERGE BRANCH') && !msgUpper.startsWith('MERGE PULL REQUEST');
-                    });
-                
-                if (commitMsgs.length > 0) {
-                    let notesHtml = '<ul class="list-disc list-inside space-y-1.5 mt-1 pr-1 max-h-40 overflow-y-auto font-sans text-gray-600 dark:text-gray-400 text-xs">';
-                    commitMsgs.forEach(msg => {
-                        notesHtml += `<li>${escapeHtml(msg)}</li>`;
-                    });
-                    notesHtml += '</ul>';
-                    
-                    notesHtml += `<div class="mt-3 pt-2 border-t border-blue-100 dark:border-blue-950/40 text-[10px] text-gray-400 flex justify-between items-center">
-                                      <span>Commits: ${commitMsgs.length}</span>
-                                      <a href="${data.html_url || `https://github.com/Talha-Quraishi/Prime-Pending-Pro/compare/${currentTag}...${newTag}`}" target="_blank" class="text-blue-500 hover:underline font-semibold">View Comparison</a>
-                                  </div>`;
-                    whatsNewContent.innerHTML = notesHtml;
-                    return;
-                }
+            if (processingContainer) processingContainer.classList.add('hidden');
+            if (transformButton) {
+                transformButton.classList.remove('hidden');
+                if (fileInput && fileInput.file) transformButton.disabled = false;
             }
-            whatsNewContent.innerHTML = fallbackLink;
-        })
-        .catch(err => {
-            console.error("Failed to fetch commits compare history:", err);
-            whatsNewContent.innerHTML = fallbackLink;
-        });
-}
-
-if (checkForUpdatesBtn && window.electronAPI && window.electronAPI.checkForUpdates) {
-    checkForUpdatesBtn.addEventListener('click', () => {
-        if (appUpdateState === 'idle') {
-            appUpdateState = 'checking';
-            checkForUpdatesBtn.disabled = true; // Disable to prevent spam checking
-            updateSpin.classList.remove('hidden');
-            updateBtnText.textContent = 'Checking for updates...';
-            updateStatusText.textContent = 'Contacting the release repository...';
-            window.electronAPI.checkForUpdates();
-        } else if (appUpdateState === 'available') {
-            appUpdateState = 'downloading';
-            updateSpin.classList.add('hidden');
-            updateBtnText.textContent = 'Downloading update...';
-            checkForUpdatesBtn.disabled = true;
-            updateStatusText.textContent = 'Initializing download...';
-            updateProgressContainer.classList.remove('hidden');
-            window.electronAPI.downloadUpdate();
-        } else if (appUpdateState === 'ready') {
-            window.electronAPI.installUpdate();
-        }
-    });
-
-    window.electronAPI.onUpdateMessage((status, info) => {
-
-        if (status === 'checking') {
-            appUpdateState = 'checking';
-            checkForUpdatesBtn.disabled = true;
-            updateSpin.classList.remove('hidden');
-            updateBtnText.textContent = 'Checking for updates...';
-            updateStatusText.textContent = 'Checking release registry...';
-            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
-        } else if (status === 'available') {
-            appUpdateState = 'available';
-            updateSpin.classList.add('hidden');
-            updateBtnText.textContent = 'Download & Install Now';
-            checkForUpdatesBtn.disabled = false;
-            updateStatusText.textContent = `New version ${info ? info.version : ''} is available!`;
-            
-            // Render Release Notes / What's New details with highlighted blue styling
-            if (whatsNewVersion && whatsNewContent && whatsNewContainer) {
-                whatsNewVersion.textContent = info ? info.version : '';
-                
-                // Fetch actual commits history comparison
-                const currentVersion = (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev';
-                const newVersion = info ? info.version : '';
-                fetchFullReleaseNotes(currentVersion, newVersion);
-                
-                whatsNewContainer.className = "border border-blue-500 dark:border-blue-400 bg-blue-50/20 dark:bg-blue-950/10 rounded-lg p-3.5 flex flex-col gap-2 text-left mt-2";
-                whatsNewContainer.classList.remove('hidden');
-                
-                // Refresh any Lucide icons inside the newly displayed container
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
+            if (progressBar) progressBar.style.width = '0%';
+            if (messageText) messageText.textContent = "Processing cancelled by user.";
+            if (simpleMessage) {
+                simpleMessage.classList.remove('text-green-500', 'dark:text-green-400');
+                simpleMessage.classList.add('text-yellow-500', 'dark:text-yellow-400');
             }
-        } else if (status === 'not-available') {
-            appUpdateState = 'idle';
-            updateSpin.classList.add('hidden');
-            updateBtnText.textContent = 'Check for Updates';
-            checkForUpdatesBtn.disabled = false;
-            updateStatusText.textContent = 'You are currently running the latest version.';
-            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
-            showToast('You are running the latest version! ✅', 'success');
-        } else if (status === 'progress') {
-            appUpdateState = 'downloading';
-            const percent = Math.round(info);
-            updateProgressBar.style.width = `${percent}%`;
-            updateProgressPercent.textContent = `${percent}%`;
-            updateStatusText.textContent = `Downloading package... (${percent}%)`;
-        } else if (status === 'downloaded') {
-            appUpdateState = 'ready';
-            updateSpin.classList.add('hidden');
-            updateProgressContainer.classList.add('hidden');
-            checkForUpdatesBtn.disabled = false;
-            checkForUpdatesBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            checkForUpdatesBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-            updateBtnText.textContent = 'Restart & Install Update';
-            updateStatusText.textContent = 'Update downloaded successfully! Click button to restart and apply.';
-            showToast('Update ready to install! 📦', 'success');
-        } else if (status === 'error') {
-            appUpdateState = 'idle';
-            updateSpin.classList.add('hidden');
-            updateProgressContainer.classList.add('hidden');
-            checkForUpdatesBtn.disabled = false;
-            updateBtnText.textContent = 'Check for Updates';
-            updateStatusText.textContent = 'Check failed. Verify network connection.';
-            if (whatsNewContainer) whatsNewContainer.classList.add('hidden');
-            showToast('Update check failed: ' + info, 'error');
-        }
-    });
-}
-
-// Quick search filter for rules list
-partySearch.addEventListener('input', debounce(() => {
-    const query = partySearch.value.toLowerCase().trim();
-    const items = partyRulesList.querySelectorAll('.party-rule-item');
-    items.forEach(item => {
-        const party = (item.dataset.party || '').toLowerCase();
-        item.style.display = (!query || party.includes(query)) ? '' : 'none';
-    });
-}, 150));
-
-document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); triggerFileSelection(); }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!transformButton.disabled) transformButton.click(); }
-    if (e.key === 'Escape' && !resetButton.classList.contains('hidden')) { e.preventDefault(); resetUI(); }
-});
-
-// Window Drag & Drop Overlay Event Handlers
-let dragCounter = 0;
-const dragDropOverlay = document.getElementById('dragDropOverlay');
-const dragDropContent = document.getElementById('dragDropContent');
-
-window.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    dragCounter++;
-    if (dragCounter === 1) {
-        dragDropOverlay.classList.remove('pointer-events-none', 'opacity-0');
-        dragDropOverlay.classList.add('opacity-100');
-        dragDropContent.classList.remove('scale-95');
-        dragDropContent.classList.add('scale-100');
-    }
-});
-
-window.addEventListener('dragover', (e) => {
-    e.preventDefault();
-});
-
-window.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    dragCounter--;
-    if (dragCounter === 0) {
-        dragDropOverlay.classList.remove('opacity-100', 'scale-100');
-        dragDropOverlay.classList.add('pointer-events-none', 'opacity-0');
-        dragDropContent.classList.remove('scale-100');
-        dragDropContent.classList.add('scale-95');
-    }
-});
-
-window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dragCounter = 0;
-    dragDropOverlay.classList.remove('opacity-100', 'scale-100');
-    dragDropOverlay.classList.add('pointer-events-none', 'opacity-0');
-    dragDropContent.classList.remove('scale-100');
-    dragDropContent.classList.add('scale-95');
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        handleFile(e.dataTransfer.files[0]);
-    }
-});
-
-async function regenerateWorkbook() {
-    if (!uploadedFileData || !transformedData || !finalDeduplicatedData) return;
-    try {
-        const workbook = XLSX.read(uploadedFileData, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
-        const originalSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[originalSheetName];
-        const originalRawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-        const originalJson = convertArrayOfArraysToObjects(originalRawData);
-        
-        const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
-        processedWbout = await generateExcelJSWorkbookBuffer(uploadedFileData, transformedData, finalDeduplicatedData, enableExcelStyling);
-    } catch (e) {
-        console.error("Failed to regenerate workbook:", e);
-    }
-}
-
-// --- HISTORY PERSISTENCE & UI LOGIC ---
-
-async function saveCurrentUploadToHistory(metadata) {
-    if (!window.electronAPI) return; // Only supported in Electron
-    if (!uploadedFileData) return;
-    
-    try {
-        const payload = {
-            filename: originalFileName,
-            fileData: uploadedFileData,
-            metadata: {
-                totalRows: metadata.totalRows || 0,
-                uniqueParties: metadata.uniqueParties || 0,
-                totalValue: metadata.totalValue || 0,
-                totalQty: metadata.totalQty || 0
-            }
-        };
-        const result = await window.electronAPI.saveToHistory(payload);
-        if (result && result.success) {
-            showToast("Saved to processing history! 📁", "success");
-        } else {
-            console.error("Failed to save to history", result?.error);
-        }
-    } catch (e) {
-        console.error("Failed to save to history:", e);
-    }
-}
-
-async function loadHistoryTable() {
-    if (!window.electronAPI) {
-        historyTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-gray-500">History is only supported in desktop mode.</td></tr>`;
-        return;
-    }
-    
-    try {
-        const list = await window.electronAPI.loadHistoryList() || [];
-        renderHistoryRows(list);
-    } catch (e) {
-        console.error("Error loading history list:", e);
-        historyTableBody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">Error loading history.</td></tr>`;
-    }
-}
-
-function renderHistoryRows(list) {
-    historyTableBody.innerHTML = '';
-    const query = historySearch.value.toLowerCase().trim();
-    const filtered = list.filter(item => !query || item.filename.toLowerCase().includes(query));
-    
-    if (filtered.length === 0) {
-        historyEmptyState.classList.remove('hidden');
-        return;
-    }
-    historyEmptyState.classList.add('hidden');
-    
-    filtered.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-gray-50/50 dark:hover:bg-[#1a1a1a]/30 transition-colors border-b border-gray-100 dark:border-neutral-800/60";
-        
-        const dateStr = new Date(item.date).toLocaleString();
-        const sizeStr = (item.sizeBytes / 1024).toFixed(1) + ' KB';
-        const valStr = '₹' + safeParseFloat(item.totalValue).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-        const qtyStr = safeParseFloat(item.totalQty).toLocaleString('en-IN');
-        
-        tr.innerHTML = `
-            <td class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">${dateStr}</td>
-            <td class="px-4 py-3 font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[200px]" title="${item.filename}">${item.filename}</td>
-            <td class="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">${sizeStr}</td>
-            <td class="px-4 py-3 text-right font-mono font-medium text-gray-600 dark:text-gray-400">${item.totalRows}</td>
-            <td class="px-4 py-3 text-right font-mono font-medium text-gray-600 dark:text-gray-400">${item.uniqueParties}</td>
-            <td class="px-4 py-3 text-right font-mono font-bold text-green-600 dark:text-green-400">${valStr}</td>
-            <td class="px-4 py-3 text-right font-mono font-medium text-blue-600 dark:text-blue-400">${qtyStr}</td>
-            <td class="px-4 py-3 text-center whitespace-nowrap">
-                <div class="flex items-center justify-center gap-2">
-                    <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2 py-1 rounded text-[10px] transition-all flex items-center gap-1 shadow-sm" onclick="loadHistoricalRecord('${item.id}')">
-                        <i data-lucide="folder-open" class="w-3 h-3"></i> Load
-                    </button>
-                    <button class="bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-700 dark:text-gray-300 font-bold px-2 py-1 rounded text-[10px] transition-all flex items-center gap-1 border border-gray-200/50 dark:border-neutral-800" onclick="downloadHistoricalRaw('${item.id}', '${item.filename.replace(/'/g, "\\'")}')">
-                        <i data-lucide="download" class="w-3 h-3"></i> Save Raw
-                    </button>
-                    <button class="bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white font-bold px-2 py-1 rounded text-[10px] transition-all flex items-center gap-1 border border-red-500/20" onclick="deleteHistoricalRecord('${item.id}')">
-                        <i data-lucide="trash-2" class="w-3 h-3"></i> Delete
-                    </button>
-                </div>
-            </td>
-        `;
-        historyTableBody.appendChild(tr);
-    });
-
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
-}
-
-async function loadHistoricalRecord(id) {
-    if (!window.electronAPI) return;
-    showToast("Restoring historical file session...", "warning");
-    
-    try {
-        const fileBuffer = await window.electronAPI.loadHistoricalFile(id);
-        if (!fileBuffer) {
-            showToast("Failed to read history file from disk.", "error");
-            return;
-        }
-        
-        // Find filename
-        const list = await window.electronAPI.loadHistoryList() || [];
-        const record = list.find(r => r.id === id);
-        const filename = record ? record.filename : 'historical_file.xlsx';
-        
-        // Convert to File object
-        const binaryData = convertIpcBuffer(fileBuffer);
-        const mockFile = new File([binaryData], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        originalFileName = filename;
-        fileNameDisplay.textContent = `Selected (History): ${filename}`;
-        
-        // Select tab process
-        isRestoringFromHistory = true;
-        switchMainView('process');
-        
-        // Load the file as a normal file
-        handleFile(mockFile);
-        
-        showToast("Historical file restored successfully! ✅", "success");
-    } catch (e) {
-        console.error("Failed to restore history session:", e);
-        showToast("Error restoring history session.", "error");
-    }
-}
-
-async function downloadHistoricalRaw(id, filename) {
-    if (!window.electronAPI) return;
-    try {
-        const fileBuffer = await window.electronAPI.loadHistoricalFile(id);
-        if (!fileBuffer) {
-            showToast("File not found on disk.", "error");
-            return;
-        }
-        
-        const binaryData = convertIpcBuffer(fileBuffer);
-        const savedPath = await window.electronAPI.saveFile({
-            defaultName: filename,
-            data: binaryData,
-            filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls', 'csv'] }]
-        });
-        
-        if (savedPath) {
-            showToast("File saved successfully! ✅", "success");
-        }
-    } catch (e) {
-        console.error("Failed to save historical raw file:", e);
-        showToast("Error saving raw file.", "error");
-    }
-}
-
-async function deleteHistoricalRecord(id) {
-    if (!window.electronAPI) return;
-    if (!confirm("Are you sure you want to delete this historical record?")) return;
-    
-    try {
-        const success = await window.electronAPI.deleteFromHistory(id);
-        if (success) {
-            showToast("Record deleted successfully! 🗑️", "success");
-            loadHistoryTable();
-        } else {
-            showToast("Failed to delete record.", "error");
-        }
-    } catch (e) {
-        console.error("Error deleting record:", e);
-        showToast("Error deleting record.", "error");
-    }
-}
-
-// Bind history functions to window so inline onclick handlers resolve them
-window.loadHistoricalRecord = loadHistoricalRecord;
-window.downloadHistoricalRaw = downloadHistoricalRaw;
-window.deleteHistoricalRecord = deleteHistoricalRecord;
-
-// Bind history search input
-if (historySearch) {
-    historySearch.addEventListener('input', () => {
-        loadHistoryTable();
-    });
-}
-
-// --- BILLING PRICE MODE LOGIC ---
-
-let activePriceMode = 'MRP'; // Tracks current active mode: 'MRP', '61', '64', or 'custom'
-
-/**
- * Update the global discount rate and refresh UI displays.
- * @param {string} mode - The discount mode ('MRP', '61', '64', or 'custom')
- * @param {number|null} customVal - Optional preset custom percentage (0-100)
- */
-function setPriceMode(mode, customVal = null) {
-    activePriceMode = mode;
-    
-    // Update button visual states
-    const btnMRP = document.getElementById('btnPriceMRP');
-    const btn61 = document.getElementById('btnPrice61');
-    const btn64 = document.getElementById('btnPrice64');
-    const btnCustom = document.getElementById('btnPriceCustom');
-    const customInput = document.getElementById('inputPriceCustom');
-    
-    const inactiveClass = "px-2.5 py-1 text-xs font-semibold rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all";
-    const activeClass = "px-2.5 py-1 text-xs font-semibold rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm transition-all";
-    
-    if (btnMRP) btnMRP.className = inactiveClass;
-    if (btn61) btn61.className = inactiveClass;
-    if (btn64) btn64.className = inactiveClass;
-    if (btnCustom) btnCustom.className = inactiveClass;
-    
-    if (mode === 'MRP') {
-        if (btnMRP) btnMRP.className = activeClass;
-        if (customInput) customInput.classList.add('hidden');
-        currentDiscount = 0;
-    } else if (mode === '61') {
-        if (btn61) btn61.className = activeClass;
-        if (customInput) customInput.classList.add('hidden');
-        currentDiscount = 0.61;
-    } else if (mode === '64') {
-        if (btn64) btn64.className = activeClass;
-        if (customInput) customInput.classList.add('hidden');
-        currentDiscount = 0.64;
-    } else if (mode === 'custom') {
-        if (btnCustom) btnCustom.className = activeClass;
-        if (customInput) {
-            customInput.classList.remove('hidden');
-            if (customVal !== null) {
-                customInput.value = customVal;
-            } else if (!customInput.value) {
-                customInput.value = '50'; // Default custom discount
-            }
-            const percent = parseFloat(customInput.value) || 0;
-            currentDiscount = percent / 100;
-        }
-    }
-    
-    // Apply changes to live dashboard immediately for preset modes
-    applyDashboardFilters(true);
-}
-
-/**
- * Sets up listeners for the price mode controls on the Insights Dashboard.
- */
-function setupDiscountListeners() {
-    const btnMRP = document.getElementById('btnPriceMRP');
-    const btn61 = document.getElementById('btnPrice61');
-    const btn64 = document.getElementById('btnPrice64');
-    const btnCustom = document.getElementById('btnPriceCustom');
-    const customInput = document.getElementById('inputPriceCustom');
-    
-    if (btnMRP) btnMRP.addEventListener('click', () => setPriceMode('MRP'));
-    if (btn61) btn61.addEventListener('click', () => setPriceMode('61'));
-    if (btn64) btn64.addEventListener('click', () => setPriceMode('64'));
-    if (btnCustom) {
-        btnCustom.addEventListener('click', () => {
-            setPriceMode('custom');
-            if (customInput) {
-                customInput.focus();
-                customInput.select();
-            }
+            if (typeof showToast === 'function') showToast("File processing cancelled.", "warning");
         });
     }
-    if (customInput) {
-        customInput.addEventListener('input', () => {
-            if (activePriceMode !== 'custom') return;
-            let val = parseFloat(customInput.value) || 0;
-            if (val < 0) val = 0;
-            if (val > 100) val = 100;
-            currentDiscount = val / 100;
-            applyDashboardFilters();
-        });
+
+    // Party rules search filter
+    const partySearch = document.getElementById('partySearch');
+    const partyRulesList = document.getElementById('partyRulesList');
+    if (partySearch && partyRulesList) {
+        partySearch.addEventListener('input', (typeof debounce === 'function' ? debounce : (fn) => fn)(() => {
+            const query = partySearch.value.toLowerCase().trim();
+            const items = partyRulesList.querySelectorAll('.party-rule-item');
+            items.forEach(item => {
+                const party = (item.dataset.party || '').toLowerCase();
+                item.style.display = (!query || party.includes(query)) ? '' : 'none';
+            });
+        }, 150));
     }
+
+    // Global keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); triggerFileSelection(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            const btn = document.getElementById('transformButton');
+            if (btn && !btn.disabled && !btn.classList.contains('hidden')) btn.click();
+        }
+        if (e.key === 'Escape') {
+            const rBtn = document.getElementById('resetButton');
+            if (rBtn && !rBtn.classList.contains('hidden')) { e.preventDefault(); resetUI(); }
+        }
+    });
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        processFile,
+        resetUI,
+        initializeApp,
+        setFinalDeduplicatedData
+    };
+}

@@ -1,13 +1,28 @@
-// --- CORE DATA PROCESSING & CONVERSION ALGORITHMS ---
+/**
+ * Prime-Pending-Pro Core Processor Engine
+ * Handles Excel data restructuring, schema mapping, and business deduplication rules.
+ */
 
+// --- UTILITIES & NORMALIZATION ---
+
+/**
+ * Safely parse numbers from Excel cells, strings, or numbers with commas.
+ */
 function safeParseFloat(val) {
-    if (val === undefined || val === null) return 0;
-    if (typeof val === 'number') return val;
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
     const cleanStr = String(val).replace(/,/g, '').trim();
     const parsed = parseFloat(cleanStr);
     return isNaN(parsed) ? 0 : parsed;
 }
 
+/**
+ * Parse diverse date representations into normalized Date objects:
+ * - DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY
+ * - YYYY-MM-DD (ISO strings)
+ * - Excel numerical serial dates (days since 1900/1970)
+ * - Auto-detect and swap MM-DD-YYYY if month > 12
+ */
 function parseDMY(dateInput) {
     if (dateInput instanceof Date) {
         return new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate());
@@ -76,14 +91,88 @@ function parseDMY(dateInput) {
     return new Date(0);
 }
 
+// --- COLUMN NORMALIZATION & SCHEMA SYNONYMS ---
+
+const COLUMN_SYNONYMS = {
+    orderNo: ['ORDER NO', 'ORDER NO.', 'ORDER NUMBER', 'ORDER_NO', 'ORDER ID', 'ORDER REF', 'SO NO', 'SO NUMBER', 'VOUCHER NO', 'VOUCHER NUMBER', 'ORDER NUM'],
+    date: ['DATE', 'ORDER DATE', 'SO DATE', 'VOUCHER DATE', 'ENTRY DATE'],
+    partNo: ['PART NO.', 'PART NO', 'PART NUMBER', 'ITEM CODE', 'PART CODE', 'PRODUCT CODE', 'CATALOG NO', 'CATALOG NUMBER', 'PART'],
+    partyName: ['PARTY NAME', 'PARTY', 'CUSTOMER NAME', 'CUSTOMER', 'ACCOUNT NAME', 'ACCOUNT'],
+    itemName: ['ITEM NAME', 'ITEM', 'DESCRIPTION', 'PRODUCT NAME', 'ITEM DESCRIPTION', 'MATERIAL DESCRIPTION', 'ITEM DESC'],
+    orderQty: ['ORDER QTY', 'ORDER QUANTITY', 'ORDER QTY.', 'ORDER_QTY', 'SO QTY'],
+    despQty: ['DESP QTY', 'DISPATCH QTY', 'DISPATCHED QTY', 'DELIVERY QTY', 'DEL QTY', 'DESP QTY.', 'DESP_QTY', 'DISPATCH_QTY'],
+    balance: ['BALANCE', 'BAL QTY', 'BALANCE QTY', 'PENDING QTY', 'REMAINING QTY', 'BAL', 'BALANCE QTY.', 'BAL_QTY', 'PENDING_QTY'],
+    rate: ['RATE', 'PRICE', 'UNIT PRICE', 'UNIT RATE', 'ITEM RATE'],
+    value: ['VALUE', 'AMOUNT', 'TOTAL VALUE', 'TOTAL AMOUNT', 'NET AMOUNT', 'BAL VALUE', 'BALANCE VALUE']
+};
+
+/**
+ * Normalizes header string: case-insensitive, strip punctuation, multiple spaces.
+ */
+function normalizeHeader(str) {
+    if (!str && str !== 0) return '';
+    return String(str)
+        .replace(/[\._\-#\/\\]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+}
+
+/**
+ * Find index of a column in headers using synonyms list.
+ */
+function findColumnIndex(headers, synonyms) {
+    if (!headers || !Array.isArray(headers)) return -1;
+    const normalizedHeaders = headers.map(h => normalizeHeader(h));
+    const normalizedSynonyms = synonyms.map(s => normalizeHeader(s));
+
+    // Exact match across all normalized synonyms
+    for (let i = 0; i < normalizedHeaders.length; i++) {
+        const h = normalizedHeaders[i];
+        if (!h) continue;
+        if (normalizedSynonyms.includes(h)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Detect the header row index in 2D array of Excel data.
+ */
+function findHeaderRowIndex(data) {
+    if (!data || !Array.isArray(data)) return -1;
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !Array.isArray(row) || row.length === 0) continue;
+        
+        let matchCount = 0;
+        for (const [key, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
+            if (findColumnIndex(row, synonyms) !== -1) {
+                matchCount++;
+            }
+        }
+        if (matchCount >= 2) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Detects mapping of standard columns to their 0-based indices in the worksheet.
+ */
+function detectColumnMap(headerRow) {
+    const colMap = {};
+    for (const [key, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
+        colMap[key] = findColumnIndex(headerRow, synonyms);
+    }
+    return colMap;
+}
+
 function convertArrayOfArraysToObjects(data) {
     if (!data || data.length === 0) return [];
-    let headerRowIndex = -1;
-    for (let i = 0; i < data.length; i++) {
-        if (!data[i] || typeof data[i].join !== 'function') continue;
-        const rowStr = data[i].join(',').toUpperCase();
-        if (rowStr.includes('ORDER NO') || rowStr.includes('PART NO.') || rowStr.includes('ITEM NAME')) { headerRowIndex = i; break; }
-    }
+    let headerRowIndex = findHeaderRowIndex(data);
     if (headerRowIndex === -1) headerRowIndex = 0;
     const headers = data[headerRowIndex];
     const arrayOfObjects = [];
@@ -91,70 +180,141 @@ function convertArrayOfArraysToObjects(data) {
         const row = data[i];
         if (!row || !Array.isArray(row)) continue;
         const obj = {};
-        for (let j = 0; j < headers.length; j++) { if (headers[j]) obj[headers[j]] = row[j] || ""; }
+        for (let j = 0; j < headers.length; j++) {
+            if (headers[j]) obj[headers[j]] = row[j] !== undefined ? row[j] : "";
+        }
         if (Object.keys(obj).length > 0) arrayOfObjects.push(obj);
     }
     return arrayOfObjects;
 }
 
+/**
+ * Transforms raw 2D Excel sheet data into structured pending order rows.
+ * Uses flexible header column detection rather than rigid hardcoded indices.
+ */
 function transformExcelData(data) {
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        throw new Error("Empty workbook or invalid sheet data.");
+    }
+
+    const headerRowIndex = findHeaderRowIndex(data);
+    if (headerRowIndex === -1) {
+        throw new Error("Header row not found. Please ensure the file contains 'ORDER NO' and 'ITEM NAME' / 'PART NO.' columns.");
+    }
+
+    const headers = data[headerRowIndex];
+    const colMap = detectColumnMap(headers);
+
+    // Validate critical columns
+    if (colMap.orderNo === -1) {
+        throw new Error("Missing required column: ORDER NO. Processing cannot continue without order identifiers.");
+    }
+    if (colMap.balance === -1 && colMap.orderQty === -1) {
+        throw new Error("Missing required column: BALANCE. Processing cannot determine pending quantities.");
+    }
+
+    const orderNoCol = colMap.orderNo;
+    const dateCol = colMap.date !== -1 ? colMap.date : 1;
+    const partNoCol = colMap.partNo;
+    const itemNameCol = colMap.itemName;
+    const orderQtyCol = colMap.orderQty;
+    const despQtyCol = colMap.despQty;
+    const balanceCol = colMap.balance;
+    const rateCol = colMap.rate;
+    const valueCol = colMap.value;
+
     const transformedRows = [];
     let currentPartyName = '', currentOrderNo = '', currentDate = '';
-    let headerRowIndex = -1;
-    for(let i=0; i<data.length; i++) {
-        if (!data[i] || typeof data[i].join !== 'function') continue; 
-        const rowStr = data[i].join(',').toUpperCase();
-        if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerRowIndex = i; break; }
-    }
-    if (headerRowIndex === -1) throw new Error("Header row not found.");
-    
+
     for (let i = headerRowIndex + 1; i < data.length; i++) {
         const row = data[i];
-        if (!row || !Array.isArray(row) || row.every(cell => cell === "")) continue;
-        const orderNo = row[0] ? String(row[0]).trim() : '';
-        const partNo = row[2] ? String(row[2]).trim() : '';
-        const itemName = row[3] ? String(row[3]).trim() : '';
-        const hasItemData = partNo || itemName;
-        const orderNoUpper = orderNo.toUpperCase();
-        const isOrderNo = orderNoUpper.startsWith('APR/SO') || orderNoUpper.startsWith('DEL');
-        const isPartyRow = orderNo && !isOrderNo && !hasItemData && !orderNoUpper.startsWith('TOTAL');
+        if (!row || !Array.isArray(row) || row.every(cell => cell === "" || cell === null || cell === undefined)) continue;
         
-         if (isPartyRow) { 
-             let pName = orderNo.trim().replace(/\s+/g, ' ');
-             const pNameUpper = pName.toUpperCase();
-             if (typeof partyMerges !== 'undefined' && partyMerges[pNameUpper]) {
-                 pName = partyMerges[pNameUpper];
-             }
-             currentPartyName = pName;
-             currentOrderNo = '';
-             currentDate = '';
-             continue;
-         }
-        if (isOrderNo) { currentOrderNo = orderNo; currentDate = row.length > 1 && row[1] ? String(row[1]).trim() : ''; }
+        const orderNoCell = (orderNoCol !== -1 && row[orderNoCol] !== undefined) ? String(row[orderNoCol]).trim() : '';
+        const col0Cell = (row[0] !== undefined) ? String(row[0]).trim() : '';
+        const partNo = (partNoCol !== -1 && row[partNoCol] !== undefined) ? String(row[partNoCol]).trim() : '';
+        const itemName = (itemNameCol !== -1 && row[itemNameCol] !== undefined) ? String(row[itemNameCol]).trim() : '';
+        const hasItemData = Boolean(partNo || itemName);
+        
+        const orderNoUpper = orderNoCell.toUpperCase();
+        // Check order voucher format: APR/SO/..., DEL/..., DEL-..., DEL..., or contains digits/slashes with SO/DEL
+        const isOrderNo = orderNoUpper.startsWith('APR/SO') ||
+                          orderNoUpper.startsWith('DEL/') ||
+                          orderNoUpper.startsWith('DEL-') ||
+                          orderNoUpper.startsWith('DEL ') ||
+                          /^DEL[0-9]/.test(orderNoUpper) ||
+                          (orderNoUpper.startsWith('DEL') && (orderNoUpper.includes('/') || orderNoUpper.includes('-') || /\d/.test(orderNoUpper)));
+
+        // Identify party row: either from orderNo column or col0 when no item data present
+        let candidatePartyName = '';
+        if (orderNoCell && !isOrderNo && !hasItemData && !orderNoUpper.startsWith('TOTAL')) {
+            candidatePartyName = orderNoCell;
+        } else if (col0Cell && !hasItemData && !col0Cell.toUpperCase().startsWith('TOTAL') && !isOrderNo) {
+            candidatePartyName = col0Cell;
+        }
+
+        if (candidatePartyName) {
+            let pName = candidatePartyName.replace(/\s+/g, ' ');
+            const pNameUpper = pName.toUpperCase();
+            if (typeof partyMerges !== 'undefined' && partyMerges && partyMerges[pNameUpper]) {
+                pName = partyMerges[pNameUpper];
+            } else if (typeof globalThis !== 'undefined' && globalThis.partyMerges && globalThis.partyMerges[pNameUpper]) {
+                pName = globalThis.partyMerges[pNameUpper];
+            }
+            currentPartyName = pName;
+            currentOrderNo = '';
+            currentDate = '';
+            continue;
+        }
+
+        if (isOrderNo) {
+            currentOrderNo = orderNoCell;
+            currentDate = (dateCol !== -1 && row[dateCol] !== undefined) ? String(row[dateCol]).trim() : '';
+        }
+
         if (!currentPartyName || !itemName || !currentDate) continue;
 
         transformedRows.push({
-            'ORDER NO': currentOrderNo, 'DATE': currentDate, 'PART NO.': partNo, 'PARTY NAME': currentPartyName,
-            'ITEM NAME': itemName, 'ORDER QTY': safeParseFloat(row[4]), 'DESP QTY': safeParseFloat(row[5]), 'BALANCE': safeParseFloat(row[6]),
-            'RATE': safeParseFloat(row[7]), 'VALUE': safeParseFloat(row[8])
+            'ORDER NO': currentOrderNo,
+            'DATE': currentDate,
+            'PART NO.': partNo,
+            'PARTY NAME': currentPartyName,
+            'ITEM NAME': itemName,
+            'ORDER QTY': orderQtyCol !== -1 ? safeParseFloat(row[orderQtyCol]) : 0,
+            'DESP QTY': despQtyCol !== -1 ? safeParseFloat(row[despQtyCol]) : 0,
+            'BALANCE': balanceCol !== -1 ? safeParseFloat(row[balanceCol]) : 0,
+            'RATE': rateCol !== -1 ? safeParseFloat(row[rateCol]) : 0,
+            'VALUE': valueCol !== -1 ? safeParseFloat(row[valueCol]) : 0
         });
     }
+
     return transformedRows;
 }
 
-function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesList, specialPartiesList, fullyExcludedPartiesList) {
-    const partiesToKeepAll = excludedPartiesList || [];            // List 1: Keep All Orders (No deduplication)
-    const partiesToKeepLatestDate = deduplicatePartiesList || [];  // List 2: Keep Latest Date Only (Delete old dates)
-    const specialParty = specialPartiesList || [];                  // Marka grouping (advanced)
-    const fullyExcluded = fullyExcludedPartiesList || [];          // Fully Excluded list
+// --- DEDUPLICATION ENGINE & BUSINESS RULES ---
 
-    // Helper to safely parse Balance as float
+/**
+ * Core business rules for order deduplication:
+ * 
+ * 1. KEEP ALL (List 1): Preserves every pending row for configured parties without deduplication.
+ * 2. KEEP LATEST (List 2): Preserves only orders matching the latest pending date for the party.
+ * 3. DEFAULT: Groups by Party + Item Name + Part No, keeping the latest pending status.
+ * 4. COMPLETED INVALIDATION: When a newer row has Balance <= 0, older pending rows for that item are discarded.
+ * 5. MARKA GROUPING: Parties in special list group by Party + Marka Tag + Item Name + Part No.
+ */
+function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesList, specialPartiesList, fullyExcludedPartiesList) {
+    if (!data || !Array.isArray(data) || data.length === 0) return [];
+
+    const partiesToKeepAll = (excludedPartiesList || []).map(p => String(p).toUpperCase());
+    const partiesToKeepLatestDate = (deduplicatePartiesList || []).map(p => String(p).toUpperCase());
+    const specialParty = (specialPartiesList || []).map(p => String(p).toUpperCase());
+    const fullyExcluded = (fullyExcludedPartiesList || []).map(p => String(p).toUpperCase());
+
     const getBalanceVal = (row) => {
         if (!row) return 0;
         return safeParseFloat(row['BALANCE']);
     };
 
-    // Helper to extract Marka if present in ORDER NO (identified by a space)
     const getMarkaInfo = (orderNo) => {
         const rawOrder = String(orderNo || '').trim();
         if (!rawOrder) return { hasMarka: false, marka: '' };
@@ -172,43 +332,35 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         return { hasMarka: false, marka: '' };
     };
 
-    // 1. Find max date for each groupKey in List 2 (Keep Latest Date Only)
+    // 1. Find max pending date for each groupKey in List 2 (Keep Latest Date Only)
     const maxGroupDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
-        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
-        
-        // Special parties bypass List 2 to ensure they always get standard item-level deduplication per marka
         if (specialParty.includes(partyName)) continue;
-
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
-        if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority if in both
+        if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority
 
-        // Skip rows with zero or negative balances so that we only keep the latest date that has pending orders
+        // Skip non-pending rows so we only find latest date with actual pending items
         if (getBalanceVal(row) <= 0) continue;
 
         const currentDate = parseDMY(row['DATE']);
-        let groupKey = partyName;
-        const existingMax = maxGroupDateMap.get(groupKey);
+        const existingMax = maxGroupDateMap.get(partyName);
         if (!existingMax || currentDate > existingMax) {
-            maxGroupDateMap.set(groupKey, currentDate);
+            maxGroupDateMap.set(partyName, currentDate);
         }
     }
 
-    // 2. Build the latest date map for the default item-level deduplication (for parties not in List 1 or List 2, OR in specialParties)
+    // 2. Build the latest item date map for default deduplication & dispatch checking
     const latestItemDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
-        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
-        
-        // Skip parties that are in List 1, UNLESS they are in specialParties (Marka grouping)
-        // Keep Latest (List 2) parties are not skipped so we can build the latestItemDateMap to check for newer dispatches
         if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) continue;
 
         const currentDate = parseDMY(row['DATE']);
-
         let key;
         if (specialParty.includes(partyName)) {
             const markaInfo = getMarkaInfo(row['ORDER NO']);
@@ -220,25 +372,25 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         } else {
             key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
         }
+        
         const existingDate = latestItemDateMap.get(key) || new Date(0);
         if (currentDate >= existingDate) {
             latestItemDateMap.set(key, currentDate);
         }
     }
 
-    // 3. Filter rows into final list
+    // 3. Filter rows into final deduplicated array
     const finalData = [];
     const processedKeys = new Set();
-    
-    // Iterate backwards (bottom-to-top) to ensure the last occurrence in the spreadsheet
-    // (representing the latest status) is kept, while maintaining original top-to-bottom order.
+
+    // Iterate backwards (bottom-to-top) so that same-day duplicates keep the bottom-most row
     for (let i = data.length - 1; i >= 0; i--) {
         const row = data[i];
         if (!row || typeof row !== 'object') continue;
-        const partyName = String(row['PARTY NAME']).trim().toUpperCase();
+        const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
 
-        // Track key for completed rows to invalidate any older pending duplicates above them
+        // Track completed/dispatched rows (Balance <= 0) to invalidate older pending duplicates
         if (getBalanceVal(row) <= 0) {
             if (!partiesToKeepAll.includes(partyName) || specialParty.includes(partyName)) {
                 let key;
@@ -257,31 +409,30 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
             continue;
         }
 
-        // Case 1: Keep All Orders (No deduplication at all) - bypassed for specialParties
+        // Case 1: Keep All Orders (No deduplication at all)
         if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) {
             finalData.unshift(row);
             continue;
         }
 
-        // Case 2: Keep Latest Date Orders Only - bypassed for specialParties
+        // Case 2: Keep Latest Date Orders Only
         if (partiesToKeepLatestDate.includes(partyName) && !specialParty.includes(partyName)) {
             const currentDate = parseDMY(row['DATE']);
-            let groupKey = partyName;
-             const maxDate = maxGroupDateMap.get(groupKey);
-             if (maxDate && currentDate.getTime() === maxDate.getTime()) {
-                 const key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
-                 const absoluteLatestDate = latestItemDateMap.get(key);
-                 
-                 // If there is a newer record showing a dispatch/completion (date > maxDate), do not keep this older item
-                 if (absoluteLatestDate && absoluteLatestDate > currentDate) {
-                     continue;
-                 }
-                 
-                 if (!processedKeys.has(key)) {
-                     finalData.unshift(row);
-                     processedKeys.add(key);
-                 }
-             }
+            const maxDate = maxGroupDateMap.get(partyName);
+            if (maxDate && currentDate.getTime() === maxDate.getTime()) {
+                const key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
+                const absoluteLatestDate = latestItemDateMap.get(key);
+                
+                // If a newer record on a later date shows dispatch/completion, skip older pending item
+                if (absoluteLatestDate && absoluteLatestDate > currentDate) {
+                    continue;
+                }
+                
+                if (!processedKeys.has(key)) {
+                    finalData.unshift(row);
+                    processedKeys.add(key);
+                }
+            }
             continue;
         }
 
@@ -298,6 +449,7 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
         } else {
             key = `${partyName}-${row['ITEM NAME']}-${row['PART NO.']}`;
         }
+
         const latestDate = latestItemDateMap.get(key);
         if (latestDate && currentDate.getTime() === latestDate.getTime()) {
             if (!processedKeys.has(key)) {
@@ -306,6 +458,7 @@ function findAndKeepLatestOrders(data, excludedPartiesList, deduplicatePartiesLi
             }
         }
     }
+
     return finalData;
 }
 
@@ -336,9 +489,9 @@ function getLevenshteinDistance(a, b) {
                 matrix[i][j] = matrix[i - 1][j - 1];
             } else {
                 matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1, // substitution
-                    matrix[i][j - 1] + 1,     // insertion
-                    matrix[i - 1][j] + 1      // deletion
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
                 );
             }
         }
@@ -372,7 +525,6 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
             wsWorking.addRow(vals);
         });
         
-        // Auto-fit columns for WORKING SHEET
         headers.forEach((h, i) => {
             let maxLen = h.length;
             transformedRows.forEach(row => {
@@ -386,8 +538,7 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
         });
     }
     
-    // 4. Add WITHOUT DUPLICATE Sheet (with optional styling and freeze pane)
-    // To freeze row 1, set ySplit: 1
+    // 4. Add WITHOUT DUPLICATE Sheet
     const wsDeduplicated = workbook.addWorksheet('WITHOUT DUPLICATE', {
         views: [{ state: 'frozen', ySplit: 1, xSplit: 0 }]
     });
@@ -400,13 +551,12 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
             wsDeduplicated.addRow(vals);
         });
         
-        // Set autoFilter range on the sheet headers
+        // AutoFilter
         wsDeduplicated.autoFilter = {
             from: { row: 1, column: 1 },
             to: { row: finalDeduplicatedRows.length + 1, column: headers.length }
         };
         
-        // Apply Autofit columns
         headers.forEach((h, i) => {
             let maxLen = h.length;
             finalDeduplicatedRows.forEach(row => {
@@ -416,25 +566,23 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
                 }
             });
             const col = wsDeduplicated.getColumn(i + 1);
-            col.width = maxLen + 4; // Add padding
+            col.width = maxLen + 4;
         });
         
-        // Apply Styling if enabled
         if (enableExcelStyling) {
-            // Header styling
             const headerRow = wsDeduplicated.getRow(1);
             headerRow.height = 24;
             headerRow.eachCell((cell) => {
                 cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
-                    fgColor: { argb: 'FF1E3A8A' } // Dark blue
+                    fgColor: { argb: 'FF1E3A8A' }
                 };
                 cell.font = {
                     name: 'Segoe UI',
                     size: 10,
                     bold: true,
-                    color: { argb: 'FFFFFFFF' } // White text
+                    color: { argb: 'FFFFFFFF' }
                 };
                 cell.alignment = { vertical: 'middle', horizontal: 'center' };
                 cell.border = {
@@ -445,7 +593,6 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
                 };
             });
             
-            // Reusable styling references to avoid allocating thousands of duplicate objects
             const cellFont = { name: 'Segoe UI', size: 9 };
             const cellBorder = {
                 top: { style: 'thin', color: { argb: 'FFF3F4F6' } },
@@ -466,7 +613,7 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
             });
             
             wsDeduplicated.eachRow((row, rowNumber) => {
-                if (rowNumber === 1) return; // Skip header
+                if (rowNumber === 1) return;
                 row.height = 20;
                 row.eachCell((cell, colNumber) => {
                     const align = colAlignments[colNumber - 1] || 'left';
@@ -476,7 +623,6 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
                 });
             });
         } else {
-            // Apply freeze pane borders & Segoe UI font to header even if not styled
             const headerRow = wsDeduplicated.getRow(1);
             headerRow.eachCell((cell) => {
                 cell.font = {
@@ -488,7 +634,25 @@ async function generateExcelJSWorkbookBuffer(fileData, transformedRows, finalDed
         }
     }
     
-    // Write to array buffer
     const buf = await workbook.xlsx.writeBuffer();
     return new Uint8Array(buf);
+}
+
+// Support Node.js testing environment while keeping global browser scope
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        safeParseFloat,
+        parseDMY,
+        normalizeHeader,
+        COLUMN_SYNONYMS,
+        findColumnIndex,
+        findHeaderRowIndex,
+        detectColumnMap,
+        convertArrayOfArraysToObjects,
+        transformExcelData,
+        findAndKeepLatestOrders,
+        autofitColumns,
+        getLevenshteinDistance,
+        generateExcelJSWorkbookBuffer
+    };
 }

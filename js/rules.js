@@ -6,6 +6,7 @@ async function persistRulesToStorage(quiet = false) {
     if (!quiet) showToast("Saving configurations...", "warning");
     if (window.electronAPI) {
         const currentConfig = await window.electronAPI.loadConfig() || {};
+        currentConfig.settingsVersion = 1;
         currentConfig.excludedParties = excludedParties;
         currentConfig.deduplicateParties = deduplicateParties;
         currentConfig.specialParties = specialParties;
@@ -17,6 +18,7 @@ async function persistRulesToStorage(quiet = false) {
             else showToast("Failed to save rules. ❌", "error");
         }
     } else {
+        localStorage.setItem('settingsVersion', '1');
         localStorage.setItem('excludedParties', JSON.stringify(excludedParties));
         localStorage.setItem('deduplicateParties', JSON.stringify(deduplicateParties));
         localStorage.setItem('specialParties', JSON.stringify(specialParties));
@@ -71,14 +73,22 @@ function renderChipsInUI() {
         const chips = container.querySelectorAll('.chip');
         chips.forEach(c => c.remove());
 
-        // Render new chips
+        // Render new chips using safe DOM methods
         arr.forEach(party => {
             const chip = document.createElement('div');
             chip.className = 'chip';
-            chip.innerHTML = `
-                <span>${party}</span>
-                <span class="chip-delete" data-party="${party}" data-type="${type}">&times;</span>
-            `;
+            
+            const spanText = document.createElement('span');
+            spanText.textContent = party;
+            
+            const delSpan = document.createElement('span');
+            delSpan.className = 'chip-delete';
+            delSpan.dataset.party = party;
+            delSpan.dataset.type = type;
+            delSpan.textContent = '×';
+            
+            chip.appendChild(spanText);
+            chip.appendChild(delSpan);
             container.insertBefore(chip, input);
         });
     });
@@ -280,7 +290,11 @@ function importRulesConfig(event) {
 function renderPartyRulesList() {
     if (!partyRulesList) return;
     if (!uniquePartiesList || uniquePartiesList.length === 0) {
-        partyRulesList.innerHTML = `<p class="italic text-gray-400 dark:text-gray-500 text-center py-4">Upload a file to see parties.</p>`;
+        partyRulesList.textContent = '';
+        const emptyP = document.createElement('p');
+        emptyP.className = 'italic text-gray-400 dark:text-gray-500 text-center py-4';
+        emptyP.textContent = 'Upload a file to see parties.';
+        partyRulesList.appendChild(emptyP);
         return;
     }
 
@@ -323,19 +337,35 @@ function renderPartyRulesList() {
     }
 
     const query = partySearch.value.toLowerCase().trim();
+    partyRulesList.textContent = '';
     
     // Render sticky frozen header for checkboxes column mapping
-    partyRulesList.innerHTML = `
-        <div class="sticky top-0 z-10 flex items-center justify-between p-2 bg-gray-100 dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-neutral-800 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider -mx-2.5 mb-2 px-[19px] rounded-t select-none">
-            <span class="flex-grow min-w-0 truncate">Party Name</span>
-            <div class="flex items-center flex-shrink-0 mr-1">
-                <span class="w-[75px] text-center" title="Keep All (No deduplication)">📋 All</span>
-                <span class="w-[75px] text-center" title="Keep Latest Date only">🔄 Latest</span>
-                <span class="w-[75px] text-center" title="Marka Grouping">🏷️ Marka</span>
-                <span class="w-[75px] text-center" title="Fully Exclude Party">❌ Exclude</span>
-            </div>
-        </div>
-    `;
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'sticky top-0 z-10 flex items-center justify-between p-2 bg-gray-100 dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-neutral-800 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider -mx-2.5 mb-2 px-[19px] rounded-t select-none';
+    
+    const headerTitle = document.createElement('span');
+    headerTitle.className = 'flex-grow min-w-0 truncate';
+    headerTitle.textContent = 'Party Name';
+    headerDiv.appendChild(headerTitle);
+
+    const headerCols = document.createElement('div');
+    headerCols.className = 'flex items-center flex-shrink-0 mr-1';
+    
+    const colDefs = [
+        { label: '📋 All', title: 'Keep All (No deduplication)' },
+        { label: '🔄 Latest', title: 'Keep Latest Date only' },
+        { label: '🏷️ Marka', title: 'Marka Grouping' },
+        { label: '❌ Exclude', title: 'Fully Exclude Party' }
+    ];
+    colDefs.forEach(cd => {
+        const colSpan = document.createElement('span');
+        colSpan.className = 'w-[75px] text-center';
+        colSpan.title = cd.title;
+        colSpan.textContent = cd.label;
+        headerCols.appendChild(colSpan);
+    });
+    headerDiv.appendChild(headerCols);
+    partyRulesList.appendChild(headerDiv);
     
     uniquePartiesList.forEach(party => {
         const partyUpper = party.toUpperCase();
@@ -348,37 +378,52 @@ function renderPartyRulesList() {
         itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer';
         itemDiv.dataset.party = partyUpper;
 
-        const isNew = activeRule === 'default';
-        const badgeHtml = isNew ? `<span class="text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0">UNCHECKED</span>` : '';
+        const nameContainer = document.createElement('div');
+        nameContainer.className = 'flex items-center min-w-0 flex-grow pr-2';
 
-        itemDiv.innerHTML = `
-            <div class="flex items-center min-w-0 flex-grow pr-2">
-                <span class="font-medium text-gray-800 dark:text-gray-200 truncate" title="${partyUpper}">${partyUpper}</span>
-                ${badgeHtml}
-            </div>
-            <div class="flex items-center flex-shrink-0 mr-1 select-none">
-                <div class="w-[75px] flex justify-center">
-                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Keep All (No deduplication)">
-                        <input type="checkbox" data-rule="keep-all" ${activeRule === 'keep-all' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                    </label>
-                </div>
-                <div class="w-[75px] flex justify-center">
-                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Keep Latest Date only">
-                        <input type="checkbox" data-rule="keep-latest" ${activeRule === 'keep-latest' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                    </label>
-                </div>
-                <div class="w-[75px] flex justify-center">
-                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Marka Grouping (Advanced)">
-                        <input type="checkbox" data-rule="marka" ${activeRule === 'marka' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                    </label>
-                </div>
-                <div class="w-[75px] flex justify-center">
-                    <label class="flex items-center justify-center cursor-pointer py-1 w-full h-full" title="Fully Exclude Party">
-                        <input type="checkbox" data-rule="exclude" ${activeRule === 'exclude' ? 'checked' : ''} class="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800">
-                    </label>
-                </div>
-            </div>
-        `;
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'font-medium text-gray-800 dark:text-gray-200 truncate';
+        nameSpan.title = partyUpper;
+        nameSpan.textContent = partyUpper;
+        nameContainer.appendChild(nameSpan);
+
+        if (activeRule === 'default') {
+            const badge = document.createElement('span');
+            badge.className = 'text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0';
+            badge.textContent = 'UNCHECKED';
+            nameContainer.appendChild(badge);
+        }
+        itemDiv.appendChild(nameContainer);
+
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'flex items-center flex-shrink-0 mr-1 select-none';
+
+        const rules = [
+            { rule: 'keep-all', title: 'Keep All (No deduplication)' },
+            { rule: 'keep-latest', title: 'Keep Latest Date only' },
+            { rule: 'marka', title: 'Marka Grouping (Advanced)' },
+            { rule: 'exclude', title: 'Fully Exclude Party' }
+        ];
+
+        rules.forEach(r => {
+            const wrap = document.createElement('div');
+            wrap.className = 'w-[75px] flex justify-center';
+
+            const label = document.createElement('label');
+            label.className = 'flex items-center justify-center cursor-pointer py-1 w-full h-full';
+            label.title = r.title;
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.dataset.rule = r.rule;
+            input.checked = (activeRule === r.rule);
+            input.className = 'w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-800 dark:border-neutral-800';
+
+            label.appendChild(input);
+            wrap.appendChild(label);
+            actionsContainer.appendChild(wrap);
+        });
+        itemDiv.appendChild(actionsContainer);
 
         itemDiv.addEventListener('click', (e) => {
             // Only set focus active if not clicking directly on a checkbox input (which has its own change listeners)
