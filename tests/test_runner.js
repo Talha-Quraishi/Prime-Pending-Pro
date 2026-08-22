@@ -15,6 +15,7 @@ const suites = [
     { name: "Numeric Normalization", path: "./test_numbers.js" },
     { name: "Excel Schema & Parser Resilience", path: "./test_parser.js" },
     { name: "Worker vs Fallback Parity", path: "./test_processing_equivalence.js" },
+    { name: "Party Order Month Selection", path: "./test_party_month_selection.js" },
     { name: "Storage Migrations & Versioning", path: "./test_storage_migrations.js" },
     { name: "Security & Path Traversal Checks", path: "./test_security.js" },
     { name: "Large-Scale Performance Benchmarks", path: "./test_perf.js" }

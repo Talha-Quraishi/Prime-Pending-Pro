@@ -1,6 +1,7 @@
 /**
  * Prime-Pending-Pro Party Rules Domain Layer
- * Classifies party rule behaviors (Keep All, Keep Latest Date, Marka Grouping, Fully Excluded) and resolves party merges.
+ * Classifies party rule behaviors (Keep All, Keep Latest Date, Marka Grouping, Fully Excluded), resolves party merges,
+ * and extracts party order month maps.
  */
 
 const PARTY_RULE_TYPES = {
@@ -10,6 +11,74 @@ const PARTY_RULE_TYPES = {
     FULLY_EXCLUDED: 'FULLY_EXCLUDED',
     DEFAULT: 'DEFAULT'
 };
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Extracts a normalized 'YYYY-MM' key from any supported date value using parseDMY.
+ * @param {*} dateVal
+ * @param {Function} [parseFn]
+ * @returns {string|null} 'YYYY-MM' string or null if invalid
+ */
+function getMonthKeyFromDate(dateVal, parseFn) {
+    if (!dateVal && dateVal !== 0) return null;
+    const parser = typeof parseFn === 'function'
+        ? parseFn
+        : (typeof parseDMY === 'function' ? parseDMY : (typeof require !== 'undefined' ? require('./normalization').parseDMY : null));
+
+    const d = parser ? parser(dateVal) : new Date(dateVal);
+    if (!d || isNaN(d.getTime()) || d.getTime() === 0) return null;
+
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+}
+
+/**
+ * Converts a machine-readable 'YYYY-MM' key to a human-friendly display label (e.g. '2025-08' -> 'Aug 2025').
+ * @param {string} monthKey
+ * @returns {string} Formatted label
+ */
+function formatMonthKey(monthKey) {
+    if (!monthKey || typeof monthKey !== 'string') return '';
+    const parts = monthKey.split('-');
+    if (parts.length === 2) {
+        const y = parts[0];
+        const mIdx = parseInt(parts[1], 10) - 1;
+        if (mIdx >= 0 && mIdx < 12) {
+            return `${MONTH_NAMES[mIdx]} ${y}`;
+        }
+    }
+    return monthKey;
+}
+
+/**
+ * Scans transformed order rows and extracts a sorted list of unique order months for each party.
+ * @param {Array<Object>} data
+ * @param {Function} [parseFn]
+ * @returns {Object<string, Array<string>>} Map of party name to sorted 'YYYY-MM' months
+ */
+function getPartyMonthsMap(data, parseFn) {
+    if (!data || !Array.isArray(data)) return {};
+    const map = {};
+    for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+        const party = String(row['PARTY NAME'] || '').trim().toUpperCase();
+        if (!party) continue;
+
+        const mKey = getMonthKeyFromDate(row['DATE'], parseFn);
+        if (mKey && /^\d{4}-\d{2}$/.test(mKey)) {
+            if (!map[party]) map[party] = new Set();
+            map[party].add(mKey);
+        }
+    }
+
+    const result = {};
+    for (const party in map) {
+        result[party] = Array.from(map[party]).sort();
+    }
+    return result;
+}
 
 /**
  * Resolves party alias/merge mappings.
@@ -55,9 +124,23 @@ function classifyPartyRule(partyName, rulesConfig = {}) {
     return PARTY_RULE_TYPES.DEFAULT;
 }
 
+if (typeof self !== 'undefined') {
+    self.PARTY_RULE_TYPES = PARTY_RULE_TYPES;
+    self.MONTH_NAMES = MONTH_NAMES;
+    self.getMonthKeyFromDate = getMonthKeyFromDate;
+    self.formatMonthKey = formatMonthKey;
+    self.getPartyMonthsMap = getPartyMonthsMap;
+    self.resolvePartyMerge = resolvePartyMerge;
+    self.classifyPartyRule = classifyPartyRule;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         PARTY_RULE_TYPES,
+        MONTH_NAMES,
+        getMonthKeyFromDate,
+        formatMonthKey,
+        getPartyMonthsMap,
         resolvePartyMerge,
         classifyPartyRule
     };

@@ -24,6 +24,8 @@ let excludedParties = [];           // "Keep All Orders"
 let deduplicateParties = [];        // "Keep Latest Only"
 let specialParties = [];            // Marka grouping
 let fullyExcludedParties = [];      // Exclude completely
+let partyMonthSelections = {};      // Map of party -> ['YYYY-MM', ...] selected months to keep
+let scannedPartyMonthsMap = {};     // Map of party -> ['YYYY-MM', ...] detected order months from scan
 let partyRulesMap = {};             // Map of partyName -> rule
 let partyMerges = {};               // Map of spellingMistakePartyName -> correctedPartyName 
 
@@ -147,7 +149,8 @@ function processFile() {
                     deduplicateParties,
                     specialParties,
                     partyMerges,
-                    fullyExcludedParties
+                    fullyExcludedParties,
+                    partyMonthSelections
                 },
                 enableExcelStyling,
                 onProgress: updateProgressUI
@@ -343,7 +346,7 @@ async function persistConfigValue(key, value) {
 // --- Application Initialization Coordinator ---
 
 async function initializeApp() {
-    let versionStr = '3.30.21';
+    let versionStr = '3.30.22';
     if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
             versionStr = await window.electronAPI.getAppVersion();
@@ -393,13 +396,14 @@ async function initializeApp() {
     // Load and migrate deduplication rules using rules-storage module
     const rulesConfig = typeof loadRulesFromStorage === 'function'
         ? await loadRulesFromStorage()
-        : { excludedParties: [], deduplicateParties: [], specialParties: [], fullyExcludedParties: [], partyMerges: {} };
+        : { excludedParties: [], deduplicateParties: [], specialParties: [], fullyExcludedParties: [], partyMerges: {}, partyMonthSelections: {} };
 
     excludedParties = rulesConfig.excludedParties || [];
     deduplicateParties = rulesConfig.deduplicateParties || [];
     specialParties = rulesConfig.specialParties || [];
     fullyExcludedParties = rulesConfig.fullyExcludedParties || [];
     partyMerges = rulesConfig.partyMerges || {};
+    partyMonthSelections = rulesConfig.partyMonthSelections || {};
 
     partyRulesMap = {};
     excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
@@ -487,29 +491,68 @@ async function initializeApp() {
 
     // Party rules search filter
     const partySearch = document.getElementById('partySearch');
-    const partyRulesList = document.getElementById('partyRulesList');
-    if (partySearch && partyRulesList) {
+    if (partySearch) {
         partySearch.addEventListener('input', (typeof debounce === 'function' ? debounce : (fn) => fn)(() => {
-            const query = partySearch.value.toLowerCase().trim();
-            const items = partyRulesList.querySelectorAll('.party-rule-item');
-            items.forEach(item => {
-                const party = (item.dataset.party || '').toLowerCase();
-                item.style.display = (!query || party.includes(query)) ? '' : 'none';
-            });
-        }, 150));
+            if (typeof renderPartyRulesList === 'function') {
+                renderPartyRulesList();
+            }
+        }, 100));
     }
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); triggerFileSelection(); }
+        const isInput = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+
+        // Ctrl+O: Open file
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) {
+            e.preventDefault();
+            triggerFileSelection();
+            return;
+        }
+
+        // Ctrl+Enter: Transform file
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             const btn = document.getElementById('transformButton');
             if (btn && !btn.disabled && !btn.classList.contains('hidden')) btn.click();
+            return;
         }
+
+        // Ctrl+S: Download transformed file
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+            const dlBtn = document.getElementById('downloadButton');
+            if (dlBtn && !dlBtn.disabled && !dlBtn.classList.contains('hidden')) {
+                e.preventDefault();
+                dlBtn.click();
+                return;
+            }
+        }
+
+        // Ctrl+F or '/' (outside inputs): Focus Party Search
+        if (((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) || (e.key === '/' && !isInput)) {
+            const pSearch = document.getElementById('partySearch');
+            if (pSearch) {
+                e.preventDefault();
+                pSearch.focus();
+                pSearch.select();
+                return;
+            }
+        }
+
+        // Escape: Reset app or clear search
         if (e.key === 'Escape') {
+            const pSearch = document.getElementById('partySearch');
+            if (pSearch && document.activeElement === pSearch && pSearch.value) {
+                e.preventDefault();
+                pSearch.value = '';
+                if (typeof renderPartyRulesList === 'function') renderPartyRulesList();
+                return;
+            }
             const rBtn = document.getElementById('resetButton');
-            if (rBtn && !rBtn.classList.contains('hidden')) { e.preventDefault(); resetUI(); }
+            if (rBtn && !rBtn.classList.contains('hidden')) {
+                e.preventDefault();
+                resetUI();
+            }
         }
     });
 }

@@ -850,7 +850,7 @@ html.low-spec *::after {
 }
 
 /* Disable non-loader animations */
-html.low-spec *:not(.loader):not(.animate-spin):not(.bead) {
+html.low-spec *:not(.loader):not(.animate-spin):not(.bead):not(.bouncing-beads) {
     animation-duration: 0s !important;
     animation-delay: 0s !important;
 }
@@ -886,24 +886,73 @@ html.low-spec *:not(.loader):not(.animate-spin):not(.bead) {
     }
 }
 
-/* Premium Bouncing Beads Loader Animation */
+/* Signature Smooth Bouncing Beads Loader (4-Bead Wave) */
+.bouncing-beads {
+    display: inline-flex !important;
+    align-items: flex-end !important;
+    gap: 3.5px !important;
+    height: 15px !important;
+    padding-bottom: 1px !important;
+    vertical-align: middle !important;
+}
+
 .bouncing-beads .bead {
-    animation: bead-bounce 0.6s infinite alternate;
-    will-change: transform, opacity;
+    display: inline-block !important;
+    width: 5px !important;
+    height: 5px !important;
+    border-radius: 50% !important;
+    background-color: #2563eb !important; /* Theme Brand Blue */
+    animation: smooth-bead-bounce 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
+    will-change: transform, opacity !important;
+    transform: translateY(0);
 }
+
+.dark .bouncing-beads .bead {
+    background-color: #60a5fa !important; /* Theme Light Blue */
+    box-shadow: 0 0 3px rgba(96, 165, 250, 0.6) !important;
+}
+
+/* 4-Bead Staggered Wave Delays */
+.bouncing-beads .bead:nth-child(1) {
+    animation-delay: 0s !important;
+}
+
 .bouncing-beads .bead:nth-child(2) {
-    animation-delay: 0.15s;
+    animation-delay: 0.14s !important;
 }
+
 .bouncing-beads .bead:nth-child(3) {
-    animation-delay: 0.3s;
+    animation-delay: 0.28s !important;
 }
-@keyframes bead-bounce {
-    0% {
-        transform: translateY(0);
-        opacity: 0.3;
+
+.bouncing-beads .bead:nth-child(4) {
+    animation-delay: 0.42s !important;
+}
+
+@keyframes smooth-bead-bounce {
+    0%, 100% {
+        transform: translateY(0) scale(1);
+        opacity: 0.4;
     }
-    100% {
-        transform: translateY(-5px);
+    35% {
+        transform: translateY(-5px) scale(1.15);
         opacity: 1;
     }
+    65% {
+        transform: translateY(0) scale(1);
+        opacity: 0.45;
+    }
+}
+
+/* Active / Selected Party Row Keyboard Navigation Highlight */
+.party-rule-item.active-party-row {
+    background-color: rgba(37, 99, 235, 0.05) !important; /* Soft subtle 5% theme blue */
+    border-color: rgba(37, 99, 235, 0.35) !important; /* Gentle 1px blue border */
+    box-shadow: none !important;
+}
+
+.dark .party-rule-item.active-party-row {
+    background-color: rgba(96, 165, 250, 0.08) !important; /* Soft subtle dark theme tint */
+    border-color: rgba(96, 165, 250, 0.35) !important;
+    box-shadow: none !important;
 }

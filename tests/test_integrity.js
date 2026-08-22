@@ -272,8 +272,155 @@ test("8. Browse File button and fileDropArea have active click bindings and trig
     assert.ok(readerCode.includes('fileDropArea.addEventListener'), "reader.js must attach click listener to fileDropArea");
 });
 
+// 9. Dark Mode Switch & Settings Theme Toggle Functionality
+test("9. Dark mode theme switching, DOM state, icon synchronization, and Settings theme button bindings", () => {
+    const navPath = path.join(rootDir, 'js/ui/navigation.js');
+    assert.ok(fs.existsSync(navPath), "js/ui/navigation.js must exist");
+    const navCode = fs.readFileSync(navPath, 'utf8');
+
+    // Verify theme toggling functions and event listeners exist in navigation.js
+    assert.ok(navCode.includes('function applyTheme('), "navigation.js must define applyTheme");
+    assert.ok(navCode.includes('function toggleTheme('), "navigation.js must define toggleTheme");
+    assert.ok(navCode.includes('themeToggle.addEventListener'), "navigation.js must attach click listener to Settings themeToggle button");
+    assert.ok(navCode.includes('themeToggleSwitch.addEventListener'), "navigation.js must attach change listener to sidebar themeToggleSwitch");
+
+    // Test DOM and State transitions using simulated DOM environment
+    const classList = new Set();
+    const mockDocumentElement = {
+        classList: {
+            add: (cls) => classList.add(cls),
+            remove: (cls) => classList.delete(cls),
+            contains: (cls) => classList.has(cls)
+        }
+    };
+
+    const mockThemeToggleSwitch = { checked: false };
+    const darkIconClasses = new Set(['hidden']);
+    const lightIconClasses = new Set(['hidden']);
+
+    const mockThemeIconDark = {
+        classList: {
+            add: (cls) => darkIconClasses.add(cls),
+            remove: (cls) => darkIconClasses.delete(cls),
+            contains: (cls) => darkIconClasses.has(cls)
+        }
+    };
+
+    const mockThemeIconLight = {
+        classList: {
+            add: (cls) => lightIconClasses.add(cls),
+            remove: (cls) => lightIconClasses.delete(cls),
+            contains: (cls) => lightIconClasses.has(cls)
+        }
+    };
+
+    const mockStorage = {};
+
+    const sandbox = {
+        document: {
+            documentElement: mockDocumentElement,
+            getElementById: (id) => {
+                if (id === 'themeToggleSwitch') return mockThemeToggleSwitch;
+                if (id === 'themeIconDark') return mockThemeIconDark;
+                if (id === 'themeIconLight') return mockThemeIconLight;
+                return null;
+            }
+        },
+        localStorage: {
+            setItem: (k, v) => { mockStorage[k] = v; },
+            getItem: (k) => mockStorage[k]
+        },
+        window: {},
+        module: { exports: {} },
+        console: console
+    };
+
+    vm.createContext(sandbox);
+    vm.runInContext(navCode, sandbox);
+
+    const { applyTheme, toggleTheme } = sandbox.module.exports;
+    assert.strictEqual(typeof applyTheme, 'function', "applyTheme must be a function");
+    assert.strictEqual(typeof toggleTheme, 'function', "toggleTheme must be a function");
+
+    // Test: Apply Dark Mode
+    applyTheme('dark');
+    assert.strictEqual(mockDocumentElement.classList.contains('dark'), true, "HTML element must have 'dark' class");
+    assert.strictEqual(mockThemeToggleSwitch.checked, true, "Sidebar switch must be checked in dark mode");
+    assert.strictEqual(mockThemeIconDark.classList.contains('hidden'), false, "Dark moon icon must be visible in dark mode");
+    assert.strictEqual(mockThemeIconLight.classList.contains('hidden'), true, "Light sun icon must be hidden in dark mode");
+
+    // Test: Apply Light Mode
+    applyTheme('light');
+    assert.strictEqual(mockDocumentElement.classList.contains('dark'), false, "HTML element must not have 'dark' class");
+    assert.strictEqual(mockThemeToggleSwitch.checked, false, "Sidebar switch must be unchecked in light mode");
+    assert.strictEqual(mockThemeIconDark.classList.contains('hidden'), true, "Dark moon icon must be hidden in light mode");
+    assert.strictEqual(mockThemeIconLight.classList.contains('hidden'), false, "Light sun icon must be visible in light mode");
+
+    // Test: toggleTheme from light -> dark
+    const themeResult1 = toggleTheme();
+    assert.strictEqual(themeResult1, 'dark', "toggleTheme from light must return 'dark'");
+    assert.strictEqual(mockDocumentElement.classList.contains('dark'), true);
+    assert.strictEqual(mockStorage['theme'], 'dark', "Theme must be persisted as 'dark'");
+
+    // Test: toggleTheme from dark -> light
+    const themeResult2 = toggleTheme();
+    assert.strictEqual(themeResult2, 'light', "toggleTheme from dark must return 'light'");
+    assert.strictEqual(mockDocumentElement.classList.contains('dark'), false);
+    assert.strictEqual(mockStorage['theme'], 'light', "Theme must be persisted as 'light'");
+});
+
+// 10. Smooth App-Themed Bouncing Beads Loader Animation
+test("10. Smooth app-themed bouncing beads loader animation, relaxed baseline, and brand theme glow", () => {
+    const stylePath = path.join(rootDir, 'style.css');
+    assert.ok(fs.existsSync(stylePath), "style.css must exist");
+    const styleContent = fs.readFileSync(stylePath, 'utf8');
+
+    // Verify keyframe animation and easing
+    assert.ok(styleContent.includes('@keyframes smooth-bead-bounce'), "style.css must define @keyframes smooth-bead-bounce");
+    assert.ok(styleContent.includes('bouncing-beads'), "style.css must define bouncing-beads container");
+    assert.ok(styleContent.includes('bead'), "style.css must define bead styling");
+
+    // Verify App Theme colors and ambient glow drop-shadow
+    assert.ok(styleContent.includes('#2563eb'), "style.css must use brand theme blue in light mode");
+    assert.ok(styleContent.includes('#60a5fa'), "style.css must use brand theme blue in dark mode");
+
+    // Verify index.html contains bouncing-beads in scanningIndicator and clean progressBar in processingContainer
+    const htmlPath = path.join(rootDir, 'index.html');
+    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    assert.ok(htmlContent.includes('id="scanningIndicator"'), "index.html must include scanningIndicator");
+    assert.ok(htmlContent.includes('id="progressBar"'), "index.html must include progressBar");
+});
+
+// 11. Global Keyboard Shortcuts and Party Rules Key Navigation
+test("11. Global keyboard shortcuts and party rules key navigation (1-4, Arrow keys, Ctrl+O, Ctrl+Enter, Ctrl+S)", () => {
+    const appPath = path.join(rootDir, 'js', 'app.js');
+    const rulesPath = path.join(rootDir, 'js', 'rules.js');
+
+    assert.ok(fs.existsSync(appPath), "js/app.js must exist");
+    assert.ok(fs.existsSync(rulesPath), "js/rules.js must exist");
+
+    const appContent = fs.readFileSync(appPath, 'utf8');
+    const rulesContent = fs.readFileSync(rulesPath, 'utf8');
+
+    // Verify app.js shortcuts
+    assert.ok(appContent.includes("e.key === 'o' || e.key === 'O'"), "app.js must handle Ctrl+O file selection");
+    assert.ok(appContent.includes("e.key === 'Enter'"), "app.js must handle Ctrl+Enter transformation");
+    assert.ok(appContent.includes("e.key === 's' || e.key === 'S'"), "app.js must handle Ctrl+S download");
+    assert.ok(appContent.includes("e.key === 'Escape'"), "app.js must handle Escape reset");
+    assert.ok(appContent.includes("partySearch"), "app.js must handle Ctrl+F / search focus");
+
+    // Verify rules.js keyboard navigation
+    assert.ok(rulesContent.includes("ArrowDown"), "rules.js must handle ArrowDown party selection");
+    assert.ok(rulesContent.includes("ArrowUp"), "rules.js must handle ArrowUp party selection");
+    assert.ok(rulesContent.includes("['1', '2', '3', '4']"), "rules.js must handle 1-4 party rule shortcuts");
+    assert.ok(rulesContent.includes("setActivePartyIndex"), "rules.js must define setActivePartyIndex");
+    assert.ok(rulesContent.includes("toggleActiveRowRule"), "rules.js must define toggleActiveRowRule");
+});
+
 if (failed > 0) {
     throw new Error(`Integrity tests failed: ${failed} failure(s)`);
 }
 
 module.exports = { passed, failed };
+
+

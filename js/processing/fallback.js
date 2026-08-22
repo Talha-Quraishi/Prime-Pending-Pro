@@ -23,6 +23,7 @@ async function runFallbackProcessing(payload, options = {}) {
         specialParties = [],
         partyMerges = {},
         fullyExcludedParties = [],
+        partyMonthSelections = {},
         enableExcelStyling = true
     } = payload;
 
@@ -60,10 +61,12 @@ async function runFallbackProcessing(payload, options = {}) {
         excludedParties,
         deduplicateParties,
         specialParties,
-        fullyExcludedParties
+        fullyExcludedParties,
+        partyMonthSelections
     );
 
-    report(80, "Generating styled sheets via ExcelJS...");
+    const exportMsg = enableExcelStyling ? "Generating styled sheets via ExcelJS..." : "Generating Excel workbook...";
+    report(80, exportMsg);
     await new Promise(r => setTimeout(r, 20));
 
     let wbout;

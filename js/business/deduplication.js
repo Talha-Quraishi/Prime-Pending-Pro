@@ -11,21 +11,32 @@
  * 3. DEFAULT: Groups by Party + Item Name + Part No, keeping the latest pending status.
  * 4. COMPLETED INVALIDATION: When a newer row has Balance <= 0, older pending rows for that item are discarded.
  * 5. MARKA GROUPING: Parties in special list group by Party + Marka Tag + Item Name + Part No.
+ * 6. PARTY MONTH SELECTION: For parties with specific months selected, only orders in those months are retained.
  * 
  * @param {Array<Object>} data - Transformed order rows
  * @param {Array<string>} excludedPartiesList - Keep All parties
  * @param {Array<string>} deduplicatePartiesList - Keep Latest Date parties
  * @param {Array<string>} specialPartiesList - Marka Grouping parties
  * @param {Array<string>} fullyExcludedPartiesList - Fully Excluded parties
+ * @param {Object<string, Array<string>>} partyMonthSelections - Map of party name to selected 'YYYY-MM' months to keep
  * @returns {Array<Object>} Filtered, deduplicated pending order rows
  */
-function findAndKeepLatestOrders(data, excludedPartiesList = [], deduplicatePartiesList = [], specialPartiesList = [], fullyExcludedPartiesList = []) {
+function findAndKeepLatestOrders(data, excludedPartiesList = [], deduplicatePartiesList = [], specialPartiesList = [], fullyExcludedPartiesList = [], partyMonthSelections = {}) {
     if (!data || !Array.isArray(data) || data.length === 0) return [];
 
     const partiesToKeepAll = (excludedPartiesList || []).map(p => String(p).toUpperCase());
     const partiesToKeepLatestDate = (deduplicatePartiesList || []).map(p => String(p).toUpperCase());
     const specialParty = (specialPartiesList || []).map(p => String(p).toUpperCase());
     const fullyExcluded = (fullyExcludedPartiesList || []).map(p => String(p).toUpperCase());
+
+    const monthSelectionsMap = {};
+    if (partyMonthSelections && typeof partyMonthSelections === 'object') {
+        for (const [k, v] of Object.entries(partyMonthSelections)) {
+            if (k && Array.isArray(v) && v.length > 0) {
+                monthSelectionsMap[String(k).trim().toUpperCase()] = v.map(m => String(m).trim());
+            }
+        }
+    }
 
     const getBalanceVal = (row) => {
         if (!row) return 0;
@@ -49,12 +60,31 @@ function findAndKeepLatestOrders(data, excludedPartiesList = [], deduplicatePart
         return markaFn(orderNo);
     };
 
+    const extractMonthKey = (dateVal) => {
+        const monthKeyHelper = typeof getMonthKeyFromDate === 'function'
+            ? getMonthKeyFromDate
+            : (typeof require !== 'undefined' ? require('./party-rules').getMonthKeyFromDate : null);
+        if (monthKeyHelper) return monthKeyHelper(dateVal, parseDate);
+        const d = parseDate(dateVal);
+        if (!d || isNaN(d.getTime()) || d.getTime() === 0) return null;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    // Filter by party month selections first if applicable
+    const isRowMonthAllowed = (partyName, dateVal) => {
+        const selectedMonths = monthSelectionsMap[partyName];
+        if (!selectedMonths || selectedMonths.length === 0) return true;
+        const rowMonth = extractMonthKey(dateVal);
+        return Boolean(rowMonth && selectedMonths.includes(rowMonth));
+    };
+
     // 1. Find max pending date for each groupKey in List 2 (Keep Latest Date Only)
     const maxGroupDateMap = new Map();
     for (const row of data) {
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
+        if (!isRowMonthAllowed(partyName, row['DATE'])) continue;
         if (specialParty.includes(partyName)) continue;
         if (!partiesToKeepLatestDate.includes(partyName)) continue;
         if (partiesToKeepAll.includes(partyName)) continue; // Keep All takes priority
@@ -75,6 +105,7 @@ function findAndKeepLatestOrders(data, excludedPartiesList = [], deduplicatePart
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
+        if (!isRowMonthAllowed(partyName, row['DATE'])) continue;
         if (partiesToKeepAll.includes(partyName) && !specialParty.includes(partyName)) continue;
 
         const currentDate = parseDate(row['DATE']);
@@ -106,6 +137,9 @@ function findAndKeepLatestOrders(data, excludedPartiesList = [], deduplicatePart
         if (!row || typeof row !== 'object') continue;
         const partyName = String(row['PARTY NAME'] || '').trim().toUpperCase();
         if (fullyExcluded.includes(partyName)) continue;
+
+        // Skip orders for months not selected for this party
+        if (!isRowMonthAllowed(partyName, row['DATE'])) continue;
 
         // Track completed/dispatched rows (Balance <= 0) to invalidate older pending duplicates
         if (getBalanceVal(row) <= 0) {

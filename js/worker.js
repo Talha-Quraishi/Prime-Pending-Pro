@@ -10,7 +10,7 @@ self.importScripts('processor.js');
 
 self.onmessage = async function(e) {
     try {
-        const { action, fileData, excludedParties, deduplicateParties, specialParties, partyMerges, fullyExcludedParties, enableExcelStyling } = e.data;
+        const { action, fileData, excludedParties, deduplicateParties, specialParties, partyMerges, fullyExcludedParties, partyMonthSelections, enableExcelStyling } = e.data;
         
         if (action === 'scan') {
             // Speed optimization: disable formulas, styles, and HTML features when just auto-scanning
@@ -19,8 +19,9 @@ self.onmessage = async function(e) {
             const worksheet = workbook.Sheets[originalSheetName];
             const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
             
-            // Quick transform to extract party names
+            // Quick transform to extract party names and their order months
             const scannedParties = new Set();
+            const partyMonthsRaw = {};
             let headerIdx = -1;
             for (let i = 0; i < rawData.length; i++) {
                 if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
@@ -29,18 +30,43 @@ self.onmessage = async function(e) {
             }
             if (headerIdx !== -1) {
                 let currentParty = '';
+                let currentDate = '';
                 for (let i = headerIdx + 1; i < rawData.length; i++) {
                     const row = rawData[i];
                     if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
                     const col0 = row[0] ? String(row[0]).trim() : '';
+                    const col1 = row[1] ? String(row[1]).trim() : '';
                     const partNo = row[2] ? String(row[2]).trim() : '';
                     const itemName = row[3] ? String(row[3]).trim() : '';
                     const hasItem = partNo || itemName;
                     const col0Upper = col0.toUpperCase();
-                    const isOrder = col0Upper.startsWith('APR/SO') || col0Upper.startsWith('DEL');
+                    const isOrder = col0Upper.startsWith('APR/SO') ||
+                                    col0Upper.startsWith('DEL/') ||
+                                    col0Upper.startsWith('DEL-') ||
+                                    col0Upper.startsWith('DEL ') ||
+                                    /^DEL[0-9]/.test(col0Upper) ||
+                                    (col0Upper.startsWith('DEL') && (col0Upper.includes('/') || col0Upper.includes('-') || /\d/.test(col0Upper)));
                     const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
-                    if (isParty) { currentParty = col0.replace(/\s+/g, ' '); scannedParties.add(currentParty); }
+                    if (isParty) {
+                        currentParty = col0.replace(/\s+/g, ' ');
+                        scannedParties.add(currentParty);
+                        currentDate = '';
+                    } else if (isOrder) {
+                        currentDate = col1;
+                    }
+                    if (currentParty && currentDate && hasItem) {
+                        const partyUpper = currentParty.toUpperCase();
+                        const mKey = getMonthKeyFromDate(currentDate);
+                        if (mKey) {
+                            if (!partyMonthsRaw[partyUpper]) partyMonthsRaw[partyUpper] = [];
+                            if (!partyMonthsRaw[partyUpper].includes(mKey)) partyMonthsRaw[partyUpper].push(mKey);
+                        }
+                    }
                 }
+            }
+            const partyMonthsMap = {};
+            for (const p in partyMonthsRaw) {
+                partyMonthsMap[p] = partyMonthsRaw[p].sort();
             }
             const uniqueParties = [...scannedParties].sort();
             const headersRow = headerIdx !== -1 ? rawData[headerIdx] : null;
@@ -49,6 +75,7 @@ self.onmessage = async function(e) {
                 action: 'scan',
                 rowCount: rawData.length,
                 uniqueParties,
+                partyMonthsMap,
                 headers: headersRow
             });
             return;
@@ -72,9 +99,10 @@ self.onmessage = async function(e) {
         const transformed = transformExcelData(originalRawData);
         
         self.postMessage({ action: 'status', progress: 80, message: 'Applying party-specific rules and deduplication...' });
-        const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
+        const finalDeduplicated = findAndKeepLatestOrders(transformed, excludedParties, deduplicateParties, specialParties, fullyExcludedParties, partyMonthSelections);
         
-        self.postMessage({ action: 'status', progress: 95, message: 'Generating styled sheets via ExcelJS...' });
+        const exportMsg = enableExcelStyling ? 'Generating styled sheets via ExcelJS...' : 'Generating Excel workbook...';
+        self.postMessage({ action: 'status', progress: 95, message: exportMsg });
         // Build workbook buffer using ExcelJS
         const wbout = await generateExcelJSWorkbookBuffer(fileData, transformed, finalDeduplicated, enableExcelStyling);
         

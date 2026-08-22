@@ -118,7 +118,7 @@ function setupDiagnosticListeners() {
             const diagInfo = [
                 `--- PRIME PENDING PRO DIAGNOSTIC REPORT ---`,
                 `Generated: ${new Date().toISOString()}`,
-                `App Version: ${document.getElementById('aboutVersionLabel')?.textContent || '3.30.21'}`,
+                `App Version: ${document.getElementById('aboutVersionLabel')?.textContent || '3.30.22'}`,
                 `User Agent: ${navigator.userAgent}`,
                 `Platform: ${navigator.platform}`,
                 `Online: ${navigator.onLine}`,

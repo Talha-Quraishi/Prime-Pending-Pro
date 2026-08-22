@@ -59,6 +59,22 @@ function applyTheme(themeName) {
     }
 }
 
+function toggleTheme() {
+    const htmlElement = document.documentElement;
+    const isDark = htmlElement.classList.contains('dark');
+    const newTheme = isDark ? 'light' : 'dark';
+    applyTheme(newTheme);
+    if (window.electronAPI && typeof persistConfiguration === 'function') {
+        persistConfiguration({ theme: newTheme });
+    } else {
+        localStorage.setItem('theme', newTheme);
+    }
+    if (typeof updateChartsTheme === 'function') {
+        updateChartsTheme();
+    }
+    return newTheme;
+}
+
 function initializeNavigation() {
     const mainTabProcess = document.getElementById('mainTabProcess');
     const mainTabInsights = document.getElementById('mainTabInsights');
@@ -67,6 +83,7 @@ function initializeNavigation() {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const sidebar = document.getElementById('sidebar');
     const themeToggleSwitch = document.getElementById('themeToggleSwitch');
+    const themeToggle = document.getElementById('themeToggle');
 
     if (mainTabProcess) mainTabProcess.addEventListener('click', () => switchMainView('process'));
     if (mainTabInsights) mainTabInsights.addEventListener('click', () => switchMainView('insights'));
@@ -100,6 +117,12 @@ function initializeNavigation() {
         });
     }
 
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            toggleTheme();
+        });
+    }
+
     // Titlebar window buttons
     const winMin = document.getElementById('winMin');
     const winMax = document.getElementById('winMax');
@@ -120,6 +143,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         switchMainView,
         applyTheme,
+        toggleTheme,
         initializeNavigation
     };
 }

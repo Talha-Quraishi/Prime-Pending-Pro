@@ -1,5 +1,3 @@
-// --- RULES MANAGEMENT, SETTINGS PERSISTENCE & SPELLING ---
-
 let filterNewOnly = false;
 
 async function persistRulesToStorage(quiet = false) {
@@ -13,7 +11,8 @@ async function persistRulesToStorage(quiet = false) {
             deduplicateParties,
             specialParties,
             fullyExcludedParties,
-            partyMerges
+            partyMerges,
+            partyMonthSelections
         });
     }
     if (!quiet && typeof showToast === 'function') {
@@ -23,14 +22,13 @@ async function persistRulesToStorage(quiet = false) {
     return success;
 }
 
-
 function triggerReDeduplication() {
     const dataSrc = (typeof getTransformedData === 'function' ? getTransformedData() : transformedData) ||
                     (typeof getOriginalJsonData === 'function' ? getOriginalJsonData() : originalJsonData);
     if (dataSrc) {
         const dedupFn = typeof findAndKeepLatestOrders === 'function' ? findAndKeepLatestOrders : null;
         if (dedupFn) {
-            const newResult = dedupFn(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties);
+            const newResult = dedupFn(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties, partyMonthSelections);
             if (typeof updateProcessingResult === 'function') {
                 updateProcessingResult(newResult);
             } else {
@@ -206,7 +204,8 @@ function exportRulesConfig() {
             deduplicateParties: deduplicateParties || [],
             specialParties: specialParties || [],
             fullyExcludedParties: fullyExcludedParties || [],
-            partyMerges: partyMerges || {}
+            partyMerges: partyMerges || {},
+            partyMonthSelections: partyMonthSelections || {}
         };
         const jsonStr = JSON.stringify(configData, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -243,6 +242,7 @@ function importRulesConfig(event) {
             specialParties = parsed.specialParties || [];
             fullyExcludedParties = parsed.fullyExcludedParties || [];
             partyMerges = parsed.partyMerges || {};
+            partyMonthSelections = parsed.partyMonthSelections || {};
 
             // Sync to partyRulesMap
             partyRulesMap = {};
@@ -283,6 +283,15 @@ function renderPartyRulesList() {
         emptyP.textContent = 'Upload a file to see parties.';
         partyRulesList.appendChild(emptyP);
         return;
+    }
+
+    const dataSrc = (typeof getTransformedData === 'function' ? getTransformedData() : transformedData) ||
+                    (typeof getOriginalJsonData === 'function' ? getOriginalJsonData() : originalJsonData) || [];
+    let partyMonthsMap = typeof getPartyMonthsMap === 'function' ? getPartyMonthsMap(dataSrc) : {};
+    
+    // If transformed data is not ready yet, use scannedPartyMonthsMap
+    if (Object.keys(partyMonthsMap).length === 0 && typeof scannedPartyMonthsMap !== 'undefined' && scannedPartyMonthsMap) {
+        partyMonthsMap = scannedPartyMonthsMap;
     }
 
     // Sync partyRulesMap from active arrays for any scanned parties
@@ -340,36 +349,8 @@ function renderPartyRulesList() {
         }
     }
 
-    const query = partySearch.value.toLowerCase().trim();
+    const query = (partySearch && partySearch.value) ? partySearch.value.toLowerCase().trim() : '';
     partyRulesList.textContent = '';
-    
-    // Render sticky frozen header for checkboxes column mapping
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'sticky top-0 z-10 flex items-center justify-between p-2 bg-gray-100 dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-neutral-800 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider -mx-2.5 mb-2 px-[19px] rounded-t select-none';
-    
-    const headerTitle = document.createElement('span');
-    headerTitle.className = 'flex-grow min-w-0 truncate';
-    headerTitle.textContent = 'Party Name';
-    headerDiv.appendChild(headerTitle);
-
-    const headerCols = document.createElement('div');
-    headerCols.className = 'flex items-center flex-shrink-0 mr-1';
-    
-    const colDefs = [
-        { label: '📋 All', title: 'Keep All (No deduplication)' },
-        { label: '🔄 Latest', title: 'Keep Latest Date only' },
-        { label: '🏷️ Marka', title: 'Marka Grouping' },
-        { label: '❌ Exclude', title: 'Fully Exclude Party' }
-    ];
-    colDefs.forEach(cd => {
-        const colSpan = document.createElement('span');
-        colSpan.className = 'w-[75px] text-center';
-        colSpan.title = cd.title;
-        colSpan.textContent = cd.label;
-        headerCols.appendChild(colSpan);
-    });
-    headerDiv.appendChild(headerCols);
-    partyRulesList.appendChild(headerDiv);
     
     uniquePartiesList.forEach(party => {
         const partyUpper = party.toUpperCase();
@@ -379,24 +360,107 @@ function renderPartyRulesList() {
         if (filterNewOnly && activeRule !== 'default') return;
 
         const itemDiv = document.createElement('div');
-        itemDiv.className = 'party-rule-item flex items-center justify-between p-2 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer';
+        itemDiv.className = 'party-rule-item flex items-center justify-between p-2.5 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer mb-1.5';
         itemDiv.dataset.party = partyUpper;
 
         const nameContainer = document.createElement('div');
-        nameContainer.className = 'flex items-center min-w-0 flex-grow pr-2';
+        nameContainer.className = 'flex flex-col min-w-0 flex-grow pr-2';
+
+        const topRow = document.createElement('div');
+        topRow.className = 'flex items-center min-w-0 flex-wrap gap-1.5';
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'font-medium text-gray-800 dark:text-gray-200 truncate';
         nameSpan.title = partyUpper;
         nameSpan.textContent = partyUpper;
-        nameContainer.appendChild(nameSpan);
+        topRow.appendChild(nameSpan);
 
         if (activeRule === 'default') {
             const badge = document.createElement('span');
-            badge.className = 'text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold ml-2 select-none uppercase tracking-wider flex-shrink-0';
+            badge.className = 'text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold select-none uppercase tracking-wider flex-shrink-0';
             badge.textContent = 'UNCHECKED';
-            nameContainer.appendChild(badge);
+            topRow.appendChild(badge);
         }
+        nameContainer.appendChild(topRow);
+
+        // Render detected order months badges for this party
+        const detectedMonths = (partyMonthsMap && partyMonthsMap[partyUpper]) ? partyMonthsMap[partyUpper] : [];
+        if (detectedMonths.length > 0) {
+            const monthsWrapper = document.createElement('div');
+            monthsWrapper.className = 'flex items-center gap-1.5 flex-wrap mt-1 select-none';
+
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'text-[9px] font-semibold text-gray-500 dark:text-gray-400 mr-0.5';
+            labelSpan.textContent = 'Keep Month:';
+            monthsWrapper.appendChild(labelSpan);
+
+            const curSelections = partyMonthSelections[partyUpper] || [];
+            const hasActiveFilter = curSelections.length > 0;
+
+            detectedMonths.forEach(mKey => {
+                const isSelected = curSelections.includes(mKey);
+                const labelText = typeof formatMonthKey === 'function' ? formatMonthKey(mKey) : mKey;
+
+                const mChip = document.createElement('button');
+                mChip.type = 'button';
+                mChip.dataset.month = mKey;
+                mChip.dataset.party = partyUpper;
+
+                if (isSelected) {
+                    mChip.className = 'px-2 py-0.5 text-[9px] font-bold rounded-md bg-blue-600 text-white shadow-xs hover:bg-blue-700 transition-all flex items-center gap-1';
+                    mChip.innerHTML = `<span>${labelText}</span><span class="text-[8px] font-bold">✓</span>`;
+                    mChip.title = `Currently keeping orders from ${labelText}. Click to remove filter.`;
+                } else if (hasActiveFilter) {
+                    mChip.className = 'px-2 py-0.5 text-[9px] font-medium rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-neutral-700 transition-all';
+                    mChip.textContent = labelText;
+                    mChip.title = `Click to also include orders from ${labelText}`;
+                } else {
+                    mChip.className = 'px-2 py-0.5 text-[9px] font-medium rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 border border-gray-200 dark:border-neutral-700 transition-all';
+                    mChip.textContent = labelText;
+                    mChip.title = `Click to keep ONLY ${labelText} orders`;
+                }
+
+                mChip.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    let current = partyMonthSelections[partyUpper] || [];
+                    if (current.length === 0) {
+                        partyMonthSelections[partyUpper] = [mKey];
+                    } else if (current.includes(mKey)) {
+                        partyMonthSelections[partyUpper] = current.filter(m => m !== mKey);
+                        if (partyMonthSelections[partyUpper].length === 0) {
+                            delete partyMonthSelections[partyUpper];
+                        }
+                    } else {
+                        partyMonthSelections[partyUpper] = [...current, mKey];
+                    }
+
+                    await persistRulesToStorage(true);
+                    renderPartyRulesList();
+                    triggerReDeduplication();
+                });
+
+                monthsWrapper.appendChild(mChip);
+            });
+
+            if (curSelections.length > 0) {
+                const resetBtn = document.createElement('button');
+                resetBtn.type = 'button';
+                resetBtn.className = 'px-1.5 py-0.5 text-[9px] font-medium rounded bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-all';
+                resetBtn.textContent = 'Keep All Months';
+                resetBtn.title = 'Reset to keep orders from all months';
+                resetBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    delete partyMonthSelections[partyUpper];
+                    await persistRulesToStorage(true);
+                    renderPartyRulesList();
+                    triggerReDeduplication();
+                });
+                monthsWrapper.appendChild(resetBtn);
+            }
+
+            nameContainer.appendChild(monthsWrapper);
+        }
+
         itemDiv.appendChild(nameContainer);
 
         const actionsContainer = document.createElement('div');
@@ -430,19 +494,23 @@ function renderPartyRulesList() {
         itemDiv.appendChild(actionsContainer);
 
         itemDiv.addEventListener('click', (e) => {
-            // Only set focus active if not clicking directly on a checkbox input (which has its own change listeners)
-            if (e.target.tagName !== 'INPUT') {
-                const rows = Array.from(partyRulesList.querySelectorAll('.party-rule-item'));
-                const idx = rows.indexOf(itemDiv);
-                if (idx !== -1) {
-                    setActivePartyIndex(idx);
-                }
+            const rows = Array.from(partyRulesList.querySelectorAll('.party-rule-item'));
+            const idx = rows.indexOf(itemDiv);
+            if (idx !== -1) {
+                setActivePartyIndex(idx);
+                partyRulesList.focus();
             }
         });
 
         const checkboxes = itemDiv.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(cb => {
             cb.addEventListener('change', async () => {
+                const rows = Array.from(partyRulesList.querySelectorAll('.party-rule-item'));
+                const idx = rows.indexOf(itemDiv);
+                if (idx !== -1) {
+                    setActivePartyIndex(idx);
+                }
+
                 const isChecked = cb.checked;
                 const targetRule = cb.dataset.rule;
 
@@ -455,24 +523,29 @@ function renderPartyRulesList() {
 
                 recompileRulesListsFromMap();
                 renderChipsInUI();
-                
-                // Save rules silently
                 await persistRulesToStorage(true);
-                
+                renderPartyRulesList();
                 triggerReDeduplication();
             });
         });
 
         partyRulesList.appendChild(itemDiv);
     });
+
+    // Re-apply active row highlighting or default to first row if available
+    const rows = partyRulesList.querySelectorAll('.party-rule-item');
+    if (rows.length > 0) {
+        const safeIdx = activePartyIndex >= 0 ? Math.min(activePartyIndex, rows.length - 1) : 0;
+        setActivePartyIndex(safeIdx);
+    }
 }
-
-
 
 let activePartyIndex = -1;
 
 function setActivePartyIndex(index) {
-    const rows = partyRulesList.querySelectorAll('.party-rule-item');
+    const listEl = document.getElementById('partyRulesList');
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll('.party-rule-item');
     if (rows.length === 0) return;
     
     // Bounds check
@@ -484,30 +557,57 @@ function setActivePartyIndex(index) {
     // Highlight active row and remove active class from others
     rows.forEach((row, i) => {
         if (i === index) {
-            row.classList.add('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-300', 'dark:border-blue-800');
-            row.scrollIntoView({ block: 'nearest', behavior: 'auto' }); // instant scroll prevents frame drops
+            row.classList.add('active-party-row');
+            row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         } else {
-            row.classList.remove('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-300', 'dark:border-blue-800');
+            row.classList.remove('active-party-row');
         }
     });
 }
 
 function toggleActiveRowRule(ruleNum) {
-    const rows = partyRulesList.querySelectorAll('.party-rule-item');
+    const listEl = document.getElementById('partyRulesList');
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll('.party-rule-item');
     if (activePartyIndex < 0 || activePartyIndex >= rows.length) return;
     
     const activeRow = rows[activePartyIndex];
     const partyUpper = activeRow.dataset.party;
+    if (!partyUpper) return;
     
     const ruleTypes = ['keep-all', 'keep-latest', 'marka', 'exclude'];
+    const ruleLabels = { 'keep-all': 'Keep All', 'keep-latest': 'Keep Latest Date', 'marka': 'Marka Grouping', 'exclude': 'Fully Excluded' };
+
+    // Reset to default
+    if (ruleNum === 0) {
+        partyRulesMap[partyUpper] = 'default';
+        const checkboxes = activeRow.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => { cb.checked = false; });
+        recompileRulesListsFromMap();
+        renderChipsInUI();
+        persistRulesToStorage(true);
+        triggerReDeduplication();
+        if (typeof showToast === 'function') {
+            showToast(`Reset ${partyUpper} to Default`, 'info', 1500);
+        }
+        return;
+    }
+
     const targetRule = ruleTypes[ruleNum - 1];
+    if (!targetRule) return;
     
     // Toggle rule
     const currentRule = partyRulesMap[partyUpper] || 'default';
     if (currentRule === targetRule) {
         partyRulesMap[partyUpper] = 'default';
+        if (typeof showToast === 'function') {
+            showToast(`Reset ${partyUpper} to Default`, 'info', 1500);
+        }
     } else {
         partyRulesMap[partyUpper] = targetRule;
+        if (typeof showToast === 'function') {
+            showToast(`Set ${partyUpper} → [${ruleLabels[targetRule] || targetRule}]`, 'success', 1500);
+        }
     }
     
     // Sync checkbox visual states on the row
@@ -520,18 +620,70 @@ function toggleActiveRowRule(ruleNum) {
         }
     });
     
-    // Save rules and re-deduplicate
     recompileRulesListsFromMap();
     renderChipsInUI();
     persistRulesToStorage(true);
     triggerReDeduplication();
-    
-    showToast(`Updated rule for ${partyUpper} using shortcut keys!`, 'success', 2000);
 }
 
-// Bind keyboard shortcuts locally once DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+// Global and local keyboard shortcuts for Party Rules List
+document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+    const searchEl = document.getElementById('partySearch');
     const listEl = document.getElementById('partyRulesList');
+
+    // Handle party search navigation
+    if (target && target === searchEl) {
+        if (e.key === 'ArrowDown' || e.key === 'Down' || e.key === 'Enter') {
+            e.preventDefault();
+            searchEl.blur();
+            if (listEl) {
+                listEl.focus();
+                setActivePartyIndex(activePartyIndex >= 0 ? activePartyIndex : 0);
+            }
+        }
+        return;
+    }
+
+    // Ignore single-key shortcuts when typing in other inputs/textareas
+    if (isInput) return;
+
+    // Check if party rules list exists and has items
+    if (listEl) {
+        const rows = listEl.querySelectorAll('.party-rule-item');
+        if (rows.length > 0) {
+            if (e.key === 'ArrowDown' || e.key === 'Down') {
+                e.preventDefault();
+                setActivePartyIndex(activePartyIndex < 0 ? 0 : activePartyIndex + 1);
+                return;
+            }
+            if (e.key === 'ArrowUp' || e.key === 'Up') {
+                e.preventDefault();
+                setActivePartyIndex(activePartyIndex <= 0 ? 0 : activePartyIndex - 1);
+                return;
+            }
+            if (['1', '2', '3', '4'].includes(e.key)) {
+                e.preventDefault();
+                if (activePartyIndex < 0) {
+                    setActivePartyIndex(0);
+                }
+                toggleActiveRowRule(parseInt(e.key));
+                return;
+            }
+            if (e.key === '0' || e.key === 'Delete') {
+                if (activePartyIndex >= 0) {
+                    e.preventDefault();
+                    toggleActiveRowRule(0);
+                    return;
+                }
+            }
+        }
+    }
+});
+
+// Bind UI event listeners once DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
     const searchEl = document.getElementById('partySearch');
     const filterNewBtn = document.getElementById('filterNewPartiesBtn');
     
@@ -550,30 +702,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     if (searchEl) {
-        searchEl.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                searchEl.blur();
-                if (listEl) {
-                    listEl.focus();
-                    setActivePartyIndex(0);
-                }
-            }
+        searchEl.addEventListener('input', () => {
+            renderPartyRulesList();
         });
-    }
-    
-    if (listEl) {
-        listEl.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setActivePartyIndex(activePartyIndex + 1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setActivePartyIndex(activePartyIndex - 1);
-            } else if (['1', '2', '3', '4'].includes(e.key)) {
-                e.preventDefault();
-                toggleActiveRowRule(parseInt(e.key));
-            }
+        searchEl.addEventListener('search', () => {
+            renderPartyRulesList();
         });
     }
 
@@ -610,9 +743,9 @@ function applyRulesSearchFilter() {
             if (!span) return;
             const partyName = span.textContent.trim().toUpperCase();
             if (!query || partyName.includes(query)) {
-                chip.style.display = ''; // Show
+                chip.style.display = '';
             } else {
-                chip.style.display = 'none'; // Hide
+                chip.style.display = 'none';
             }
         });
     });
