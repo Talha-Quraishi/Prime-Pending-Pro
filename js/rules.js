@@ -360,39 +360,30 @@ function renderPartyRulesList() {
         if (filterNewOnly && activeRule !== 'default') return;
 
         const itemDiv = document.createElement('div');
-        itemDiv.className = 'party-rule-item flex items-center justify-between p-2.5 rounded border border-gray-200/50 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-gray-300 dark:hover:border-neutral-700 transition-all cursor-pointer mb-1.5';
+        itemDiv.className = 'party-rule-item flex items-center justify-between p-2 px-3 rounded-lg border border-gray-200/60 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-blue-400/50 dark:hover:border-blue-600/50 transition-all cursor-pointer mb-1.5 gap-2';
         itemDiv.dataset.party = partyUpper;
 
         const nameContainer = document.createElement('div');
-        nameContainer.className = 'flex flex-col min-w-0 flex-grow pr-2';
-
-        const topRow = document.createElement('div');
-        topRow.className = 'flex items-center min-w-0 flex-wrap gap-1.5';
+        nameContainer.className = 'flex items-center min-w-0 flex-grow pr-2 gap-1.5 flex-wrap';
 
         const nameSpan = document.createElement('span');
-        nameSpan.className = 'font-medium text-gray-800 dark:text-gray-200 truncate';
+        nameSpan.className = 'font-semibold text-gray-800 dark:text-gray-200 truncate text-xs';
         nameSpan.title = partyUpper;
         nameSpan.textContent = partyUpper;
-        topRow.appendChild(nameSpan);
+        nameContainer.appendChild(nameSpan);
 
         if (activeRule === 'default') {
             const badge = document.createElement('span');
             badge.className = 'text-[8px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold select-none uppercase tracking-wider flex-shrink-0';
             badge.textContent = 'UNCHECKED';
-            topRow.appendChild(badge);
+            nameContainer.appendChild(badge);
         }
-        nameContainer.appendChild(topRow);
 
-        // Render detected order months badges for this party
+        // Render detected order months badges inline for this party
         const detectedMonths = (partyMonthsMap && partyMonthsMap[partyUpper]) ? partyMonthsMap[partyUpper] : [];
         if (detectedMonths.length > 0) {
             const monthsWrapper = document.createElement('div');
-            monthsWrapper.className = 'flex items-center gap-1.5 flex-wrap mt-1 select-none';
-
-            const labelSpan = document.createElement('span');
-            labelSpan.className = 'text-[9px] font-semibold text-gray-500 dark:text-gray-400 mr-0.5';
-            labelSpan.textContent = 'Keep Month:';
-            monthsWrapper.appendChild(labelSpan);
+            monthsWrapper.className = 'flex items-center gap-1 flex-wrap select-none ml-1';
 
             const curSelections = partyMonthSelections[partyUpper] || [];
             const hasActiveFilter = curSelections.length > 0;
@@ -407,15 +398,15 @@ function renderPartyRulesList() {
                 mChip.dataset.party = partyUpper;
 
                 if (isSelected) {
-                    mChip.className = 'px-2 py-0.5 text-[9px] font-bold rounded-md bg-blue-600 text-white shadow-xs hover:bg-blue-700 transition-all flex items-center gap-1';
-                    mChip.innerHTML = `<span>${labelText}</span><span class="text-[8px] font-bold">✓</span>`;
+                    mChip.className = 'px-1.5 py-0.5 text-[8.5px] font-bold rounded bg-blue-600 text-white shadow-xs hover:bg-blue-700 transition-all flex items-center gap-0.5 cursor-pointer';
+                    mChip.innerHTML = `<span>${labelText}</span><span class="text-[7.5px] font-bold">✓</span>`;
                     mChip.title = `Currently keeping orders from ${labelText}. Click to remove filter.`;
                 } else if (hasActiveFilter) {
-                    mChip.className = 'px-2 py-0.5 text-[9px] font-medium rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-neutral-700 transition-all';
+                    mChip.className = 'px-1.5 py-0.5 text-[8.5px] font-medium rounded bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-neutral-700 transition-all cursor-pointer';
                     mChip.textContent = labelText;
                     mChip.title = `Click to also include orders from ${labelText}`;
                 } else {
-                    mChip.className = 'px-2 py-0.5 text-[9px] font-medium rounded-md bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 border border-gray-200 dark:border-neutral-700 transition-all';
+                    mChip.className = 'px-1.5 py-0.5 text-[8.5px] font-medium rounded bg-gray-100/80 dark:bg-neutral-800/80 text-gray-600 dark:text-gray-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 border border-gray-200/80 dark:border-neutral-700 transition-all cursor-pointer';
                     mChip.textContent = labelText;
                     mChip.title = `Click to keep ONLY ${labelText} orders`;
                 }
@@ -445,8 +436,8 @@ function renderPartyRulesList() {
             if (curSelections.length > 0) {
                 const resetBtn = document.createElement('button');
                 resetBtn.type = 'button';
-                resetBtn.className = 'px-1.5 py-0.5 text-[9px] font-medium rounded bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-all';
-                resetBtn.textContent = 'Keep All Months';
+                resetBtn.className = 'px-1 py-0.5 text-[8px] font-medium rounded bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-all cursor-pointer';
+                resetBtn.textContent = 'All Months';
                 resetBtn.title = 'Reset to keep orders from all months';
                 resetBtn.addEventListener('click', async (e) => {
                     e.stopPropagation();
