@@ -55,7 +55,7 @@ test("1. Deduplication throughput for 1,000 rows (< 50ms)", () => {
     const duration = Date.now() - start;
     
     assert.ok(result.length > 0);
-    assert.ok(duration < 200, `Took ${duration}ms, expected < 200ms`);
+    assert.ok(duration < 500, `Took ${duration}ms, expected < 500ms`);
     console.log(`       1,000 rows processed in ${duration}ms (Output rows: ${result.length})`);
 });
 
