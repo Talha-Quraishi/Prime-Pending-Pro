@@ -12,7 +12,8 @@ let _inMemoryRulesState = {
     deduplicateParties: [],
     specialParties: [],
     fullyExcludedParties: [],
-    partyMerges: {}
+    partyMerges: {},
+    partyMonthSelections: {}
 };
 
 /**
@@ -28,7 +29,8 @@ function migrateRulesData(raw) {
             deduplicateParties: [],
             specialParties: [],
             fullyExcludedParties: [],
-            partyMerges: {}
+            partyMerges: {},
+            partyMonthSelections: {}
         };
     }
 
@@ -41,6 +43,19 @@ function migrateRulesData(raw) {
         }
         return res;
     };
+    const cleanMonthSelections = (obj) => {
+        if (!obj || typeof obj !== 'object') return {};
+        const res = {};
+        for (const [k, v] of Object.entries(obj)) {
+            if (k && Array.isArray(v)) {
+                const months = v.map(m => String(m).trim()).filter(m => /^\d{4}-\d{2}$/.test(m));
+                if (months.length > 0) {
+                    res[String(k).trim().toUpperCase()] = months;
+                }
+            }
+        }
+        return res;
+    };
 
     return {
         rulesVersion: RULES_STORAGE_VERSION,
@@ -48,7 +63,8 @@ function migrateRulesData(raw) {
         deduplicateParties: cleanArray(raw.deduplicateParties),
         specialParties: cleanArray(raw.specialParties),
         fullyExcludedParties: cleanArray(raw.fullyExcludedParties),
-        partyMerges: cleanMerges(raw.partyMerges)
+        partyMerges: cleanMerges(raw.partyMerges),
+        partyMonthSelections: cleanMonthSelections(raw.partyMonthSelections)
     };
 }
 
@@ -94,13 +110,15 @@ async function loadRulesFromStorage() {
             const special = JSON.parse(localStorage.getItem('specialParties') || '[]');
             const fullyExcluded = JSON.parse(localStorage.getItem('fullyExcludedParties') || '[]');
             const partyMerges = JSON.parse(localStorage.getItem('partyMerges') || '{}');
+            const partyMonthSelections = JSON.parse(localStorage.getItem('partyMonthSelections') || '{}');
 
             rawConfig = {
                 excludedParties: excluded,
                 deduplicateParties: deduplicate,
                 specialParties: special,
                 fullyExcludedParties: fullyExcluded,
-                partyMerges
+                partyMerges,
+                partyMonthSelections
             };
         } catch (e) {
             console.warn("Corrupt party rules in LocalStorage, resetting to defaults:", e);
@@ -132,6 +150,7 @@ async function saveRulesToStorage(rulesConfig) {
             localStorage.setItem('specialParties', JSON.stringify(validated.specialParties));
             localStorage.setItem('fullyExcludedParties', JSON.stringify(validated.fullyExcludedParties));
             localStorage.setItem('partyMerges', JSON.stringify(validated.partyMerges));
+            localStorage.setItem('partyMonthSelections', JSON.stringify(validated.partyMonthSelections));
         } catch (e) {
             console.warn("Failed saving rules to LocalStorage:", e);
             success = false;
@@ -149,6 +168,7 @@ async function saveRulesToStorage(rulesConfig) {
             currentConfig.specialParties = validated.specialParties;
             currentConfig.fullyExcludedParties = validated.fullyExcludedParties;
             currentConfig.partyMerges = validated.partyMerges;
+            currentConfig.partyMonthSelections = validated.partyMonthSelections;
             const electronSuccess = await window.electronAPI.saveConfig(currentConfig);
             if (!electronSuccess) success = false;
         } catch (e) {

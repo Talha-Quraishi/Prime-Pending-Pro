@@ -100,43 +100,67 @@ function updateDashboardUI(data, immediateCharts = false) {
     const partiesValueMap = {};
     const itemsQtyMap = {};
     const dateCountMap = {};
+    let delCount = 0, aprCount = 0;
     
     const agingBuckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
-    let delCount = 0, aprCount = 0;
     const today = new Date();
+    today.setHours(0,0,0,0);
 
-    if (dataTableBody) dataTableBody.textContent = '';
     dashboardTableRows = [];
     loadedRowCount = 0;
+    if (dataTableBody) dataTableBody.innerHTML = '';
 
-    if (tableEmptyState) {
-        if (data.length === 0) tableEmptyState.classList.remove('hidden');
-        else tableEmptyState.classList.add('hidden');
+    if (data.length === 0) {
+        if (tableEmptyState) tableEmptyState.classList.remove('hidden');
+        if (typeof animateValue === 'function') {
+            animateValue(dashTotalValueDisplay, 0, {
+                format: (v) => v.toLocaleString('en-IN', { maximumFractionDigits: 0, style: 'currency', currency: 'INR' })
+            });
+            animateValue(dashTotalQtyDisplay, 0);
+            animateValue(dashUniqueItemsDisplay, 0);
+            animateValue(dashUniquePartiesDisplay, 0);
+        }
+        if (immediateCharts) {
+            debouncedRenderCharts.cancel();
+            renderCharts([], [], [], [], 0, 0, agingBuckets);
+        } else {
+            debouncedRenderCharts([], [], [], [], 0, 0, agingBuckets);
+        }
+        return;
     }
 
+    if (tableEmptyState) tableEmptyState.classList.add('hidden');
+
     data.forEach(row => {
-        const val = (typeof safeParseFloat === 'function' ? safeParseFloat(row['VALUE']) : (parseFloat(row['VALUE']) || 0)) * (1 - currentDiscount);
-        const qty = (typeof safeParseFloat === 'function' ? safeParseFloat(row['BALANCE']) : (parseFloat(row['BALANCE']) || 0)) || (typeof safeParseFloat === 'function' ? safeParseFloat(row['ORDER QTY']) : (parseFloat(row['ORDER QTY']) || 0));
-        const pName = row['PARTY NAME'] || 'Unknown';
-        const iName = row['ITEM NAME'] || 'Unknown';
-        const orderNo = String(row['ORDER NO']).toUpperCase();
-        const dateRaw = row['DATE'];
+        const orderNo = row[findColumnIndex(data, 'ORDER NO', 'ORD NO', 'ORDER_NO')] || '';
+        const dateRaw = row[findColumnIndex(data, 'DATE', 'ORD DATE', 'ORDER DATE')] || '';
+        const pName = row[findColumnIndex(data, 'PARTY NAME', 'CUSTOMER', 'PARTY')] || '';
+        const iName = row[findColumnIndex(data, 'ITEM NAME', 'PRODUCT', 'ITEM')] || '';
+        const qty = normalizeNumber(row[findColumnIndex(data, 'BALANCE', 'BAL QTY', 'PENDING QTY', 'QTY')]);
+        
+        let rate = normalizeNumber(row[findColumnIndex(data, 'RATE', 'PRICE', 'UNIT PRICE')]);
+        if (activeDiscountRate > 0) {
+            rate = rate * (1 - activeDiscountRate);
+        }
+        const val = qty * rate;
 
         totalValue += val;
         totalQty += qty;
-        uniqueItems.add(iName);
-        uniqueParties.add(pName);
-        partiesValueMap[pName] = (partiesValueMap[pName] || 0) + val;
-        itemsQtyMap[iName] = (itemsQtyMap[iName] || 0) + qty;
+        if (iName) uniqueItems.add(iName);
+        if (pName) uniqueParties.add(pName);
 
-        if (orderNo.startsWith('DEL')) delCount++;
-        else if (orderNo.startsWith('APR')) aprCount++;
+        if (pName) partiesValueMap[pName] = (partiesValueMap[pName] || 0) + val;
+        if (iName) itemsQtyMap[iName] = (itemsQtyMap[iName] || 0) + qty;
 
-        const dateObj = dateRaw && typeof parseDMY === 'function' ? parseDMY(dateRaw) : new Date(0);
+        const upperOrder = String(orderNo).toUpperCase();
+        if (upperOrder.startsWith('DEL')) delCount++;
+        else if (upperOrder.startsWith('APR')) aprCount++;
+
+        const dateObj = parseAnyDate(dateRaw);
         if (dateObj.getTime() !== 0) {
-            const isoDate = typeof getLocalDateString === 'function' ? getLocalDateString(dateObj) : dateObj.toISOString().slice(0, 10);
-            dateCountMap[isoDate] = (dateCountMap[isoDate] || 0) + 1;
-            
+            const dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+            dateCountMap[dateKey] = (dateCountMap[dateKey] || 0) + 1;
+
             const diffTime = Math.abs(today - dateObj);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
             

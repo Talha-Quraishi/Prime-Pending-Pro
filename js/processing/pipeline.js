@@ -31,6 +31,7 @@ async function processWorkbook(params) {
         specialParties: rules.specialParties || [],
         partyMerges: rules.partyMerges || {},
         fullyExcludedParties: rules.fullyExcludedParties || [],
+        partyMonthSelections: rules.partyMonthSelections || {},
         enableExcelStyling
     };
 

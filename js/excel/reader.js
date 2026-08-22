@@ -88,6 +88,7 @@ function handleFile(file) {
                     if (result.success && result.action === 'scan') {
                         if (statTotalRows) statTotalRows.textContent = result.rowCount;
                         uniquePartiesList = result.uniqueParties;
+                        scannedPartyMonthsMap = result.partyMonthsMap || {};
                         if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
                         
                         validateExcelSchema(result.headers);
@@ -129,6 +130,7 @@ function handleFile(file) {
                     if (statTotalRows) statTotalRows.textContent = rawData.length;
 
                     const scannedParties = new Set();
+                    const partyMonthsRaw = {};
                     let headerIdx = -1;
                     for (let i = 0; i < rawData.length; i++) {
                         if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
@@ -137,18 +139,45 @@ function handleFile(file) {
                     }
                     if (headerIdx !== -1) {
                         let currentParty = '';
+                        let currentDate = '';
                         for (let i = headerIdx + 1; i < rawData.length; i++) {
                             const row = rawData[i];
                             if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
                             const col0 = row[0] ? String(row[0]).trim() : '';
+                            const col1 = row[1] ? String(row[1]).trim() : '';
                             const partNo = row[2] ? String(row[2]).trim() : '';
                             const itemName = row[3] ? String(row[3]).trim() : '';
                             const hasItem = partNo || itemName;
                             const col0Upper = col0.toUpperCase();
-                            const isOrder = col0Upper.startsWith('APR/SO') || col0Upper.startsWith('DEL');
+                            const isOrder = col0Upper.startsWith('APR/SO') ||
+                                            col0Upper.startsWith('DEL/') ||
+                                            col0Upper.startsWith('DEL-') ||
+                                            col0Upper.startsWith('DEL ') ||
+                                            /^DEL[0-9]/.test(col0Upper) ||
+                                            (col0Upper.startsWith('DEL') && (col0Upper.includes('/') || col0Upper.includes('-') || /\d/.test(col0Upper)));
                             const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
-                            if (isParty) { currentParty = col0.replace(/\s+/g, ' '); scannedParties.add(currentParty); }
+                            if (isParty) {
+                                currentParty = col0.replace(/\s+/g, ' ');
+                                scannedParties.add(currentParty);
+                                currentDate = '';
+                            } else if (isOrder) {
+                                currentDate = col1;
+                            }
+                            if (currentParty && currentDate && hasItem) {
+                                const partyUpper = currentParty.toUpperCase();
+                                const monthFn = typeof getMonthKeyFromDate === 'function' ? getMonthKeyFromDate : null;
+                                const mKey = monthFn ? monthFn(currentDate) : null;
+                                if (mKey) {
+                                    if (!partyMonthsRaw[partyUpper]) partyMonthsRaw[partyUpper] = [];
+                                    if (!partyMonthsRaw[partyUpper].includes(mKey)) partyMonthsRaw[partyUpper].push(mKey);
+                                }
+                            }
                         }
+                    }
+
+                    scannedPartyMonthsMap = {};
+                    for (const p in partyMonthsRaw) {
+                        scannedPartyMonthsMap[p] = partyMonthsRaw[p].sort();
                     }
 
                     uniquePartiesList = [...scannedParties].sort();
