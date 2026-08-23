@@ -1124,6 +1124,10 @@ html.low-spec *:not(.loader):not(.animate-spin):not(.bead):not(.bouncing-beads) 
     color: #ffffff !important;
 }
 
+.w-0 {
+    width: 0% !important;
+}
+
 /* Low spec mode overrides for modal overlays */
 html.low-spec #shortcutOverlay,
 html.low-spec #dragDropOverlay,

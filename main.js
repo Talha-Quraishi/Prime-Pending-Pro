@@ -356,12 +356,28 @@ ipcMain.handle('purge-history', async (event, options = {}) => {
   }
 });
 
-ipcMain.handle('load-config', async () => {
+function sanitizeConfigObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  const clean = {};
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    const val = obj[key];
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      clean[key] = sanitizeConfigObject(val);
+    } else if (Array.isArray(val)) {
+      clean[key] = val.map(item => (item !== null && typeof item === 'object' && !Array.isArray(item)) ? sanitizeConfigObject(item) : item);
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean;
+}
 
+ipcMain.handle('load-config', async () => {
   try {
     const content = await fs.promises.readFile(configPath, 'utf8');
     const parsed = JSON.parse(content);
-    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? sanitizeConfigObject(parsed) : {};
   } catch (e) {
     return {};
   }
@@ -372,7 +388,8 @@ ipcMain.handle('save-config', async (event, config) => {
     if (!config || typeof config !== 'object' || Array.isArray(config)) {
       return false;
     }
-    await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
+    const safeConfig = sanitizeConfigObject(config);
+    await atomicWriteFile(configPath, JSON.stringify(safeConfig, null, 2));
     return true;
   } catch (e) {
     console.error("save-config error:", e);
@@ -428,10 +445,12 @@ ipcMain.handle('select-file', async () => {
 ipcMain.handle('save-file', async (event, payload) => {
   try {
     if (!payload || typeof payload !== 'object') return null;
-    const { defaultName, data, filters } = payload;
+    const { defaultName, defaultPath, data, filters } = payload;
     if (!data) return null;
 
-    const safeDefaultName = typeof defaultName === 'string' ? path.basename(defaultName) : 'pending_orders.xlsx';
+    const rawName = defaultName || defaultPath || 'pending_orders.xlsx';
+    const safeDefaultName = typeof rawName === 'string' ? path.basename(rawName).replace(/[\0\r\n]/g, '') : 'pending_orders.xlsx';
+    
     const result = await dialog.showSaveDialog({
       defaultPath: safeDefaultName,
       filters: Array.isArray(filters) ? filters : [{ name: 'Excel Files', extensions: ['xlsx'] }]
@@ -441,10 +460,10 @@ ipcMain.handle('save-file', async (event, payload) => {
     // Write atomically using temporary file to avoid incomplete files on failure
     const targetPath = result.filePath;
     const tmpPath = `${targetPath}.${Date.now()}.tmp`;
-    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    const buffer = Buffer.isBuffer(data) ? data : (data instanceof Uint8Array ? Buffer.from(data) : Buffer.from(data));
     
-    fs.writeFileSync(tmpPath, buffer);
-    fs.renameSync(tmpPath, targetPath);
+    await fs.promises.writeFile(tmpPath, buffer);
+    await fs.promises.rename(tmpPath, targetPath);
     return targetPath;
   } catch (e) {
     console.error("save-file error:", e);
@@ -468,13 +487,25 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       additionalArguments: ['--app-version=' + app.getVersion()]
     }
   });
 
-  // Lock down navigation and popups (defense-in-depth against content injection)
+  // Lock down navigation, popups, and webviews (defense-in-depth against content injection)
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+  mainWindow.webContents.on('will-redirect', (e) => e.preventDefault());
+  mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault());
+  
+  if (mainWindow.webContents.session) {
+    mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(false); // Deny all ambient browser permissions
+    });
+  }
+
   mainWindow.on('closed', () => { mainWindow = null; });
 
   // Remove default browser menu

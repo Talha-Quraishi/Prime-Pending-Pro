@@ -23,6 +23,7 @@ const sharedAppGlobals = {
     debounce: 'readonly',
     animateValue: 'readonly',
     convertIpcBuffer: 'readonly',
+    escapeHtml: 'readonly',
     createTableCell: 'readonly',
 
     // utils/dates.js + formatting.js
