@@ -97,6 +97,22 @@ function renderChipsInUI() {
     applyRulesSearchFilter();
 }
 
+/**
+ * Fills the scanned-parties autocomplete datalist used by all rule chip inputs.
+ * Previously referenced but never implemented - autocomplete silently did nothing.
+ */
+function updatePartiesDatalist() {
+    const datalist = document.getElementById('scannedPartiesDatalist');
+    if (!datalist) return;
+    datalist.textContent = '';
+    (uniquePartiesList || []).forEach(party => {
+        if (!party) return;
+        const option = document.createElement('option');
+        option.value = String(party).toUpperCase();
+        datalist.appendChild(option);
+    });
+}
+
 function setupChipInputListeners() {
     const inputs = [
         { inputId: 'chipInputExclusions', arrRef: () => excludedParties, setArr: (val) => { excludedParties = val; }, type: 'keep-all' },
@@ -268,13 +284,15 @@ function importRulesConfig(event) {
             showToast("Failed to import rules: " + err.message, 'error');
         } finally {
             // Reset input so the same file can be selected again
-            importRulesInput.value = '';
+            const importRulesInput = document.getElementById('importRulesInput');
+            if (importRulesInput) importRulesInput.value = '';
         }
     };
     reader.readAsText(file);
 }
 
 function renderPartyRulesList() {
+    const partyRulesList = document.getElementById('partyRulesList');
     if (!partyRulesList) return;
     if (!uniquePartiesList || uniquePartiesList.length === 0) {
         partyRulesList.textContent = '';
@@ -349,15 +367,25 @@ function renderPartyRulesList() {
         }
     }
 
+    const partySearch = document.getElementById('partySearch');
     const query = (partySearch && partySearch.value) ? partySearch.value.toLowerCase().trim() : '';
     partyRulesList.textContent = '';
-    
+
+    // Batch DOM insertions into a single reflow; cap rendered rows so very
+    // large scans stay snappy (search narrows the set before it grows).
+    const listFragment = document.createDocumentFragment();
+    const MAX_RENDERED_ROWS = 350;
+    let renderedCount = 0;
+    let matchedCount = 0;
+
     uniquePartiesList.forEach(party => {
         const partyUpper = party.toUpperCase();
         const activeRule = partyRulesMap[partyUpper] || 'default';
 
         if (query && !partyUpper.toLowerCase().includes(query)) return;
         if (filterNewOnly && activeRule !== 'default') return;
+        matchedCount++;
+        if (renderedCount >= MAX_RENDERED_ROWS) return;
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'party-rule-item flex items-center justify-between p-2 px-3 rounded-lg border border-gray-200/60 dark:border-neutral-800 bg-white dark:bg-[#1b1b1b]/50 hover:border-blue-400/50 dark:hover:border-blue-600/50 transition-all cursor-pointer mb-1.5 gap-2';
@@ -520,8 +548,18 @@ function renderPartyRulesList() {
             });
         });
 
-        partyRulesList.appendChild(itemDiv);
+        listFragment.appendChild(itemDiv);
+        renderedCount++;
     });
+
+    partyRulesList.appendChild(listFragment);
+
+    if (matchedCount > renderedCount) {
+        const capNote = document.createElement('p');
+        capNote.className = 'text-[10px] text-gray-400 dark:text-gray-500 text-center py-2 italic';
+        capNote.textContent = `Showing first ${renderedCount} of ${matchedCount} matching parties — refine the search to narrow it down.`;
+        partyRulesList.appendChild(capNote);
+    }
 
     // Re-apply active row highlighting or default to first row if available
     const rows = partyRulesList.querySelectorAll('.party-rule-item');
@@ -677,6 +715,9 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
     const searchEl = document.getElementById('partySearch');
     const filterNewBtn = document.getElementById('filterNewPartiesBtn');
+    const debouncedPartyListRender = (typeof debounce === 'function' ? debounce : (fn) => fn)(() => {
+        renderPartyRulesList();
+    }, 120);
     
     if (filterNewBtn) {
         filterNewBtn.addEventListener('click', () => {
@@ -688,17 +729,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 filterNewBtn.classList.remove('border-emerald-500', 'bg-emerald-50/50', 'dark:bg-emerald-950/20', 'text-emerald-700', 'dark:text-emerald-400');
                 filterNewBtn.classList.add('border-gray-300', 'dark:border-neutral-800', 'bg-white', 'dark:bg-[#1b1b1b]', 'text-gray-600', 'dark:text-gray-400');
             }
-            renderPartyRulesList();
+            debouncedPartyListRender();
         });
     }
     
     if (searchEl) {
-        searchEl.addEventListener('input', () => {
-            renderPartyRulesList();
-        });
-        searchEl.addEventListener('search', () => {
-            renderPartyRulesList();
-        });
+        searchEl.addEventListener('input', debouncedPartyListRender);
+        searchEl.addEventListener('search', debouncedPartyListRender);
     }
 
     const rulesSearchEl = document.getElementById('rulesSearchInput');

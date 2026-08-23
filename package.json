@@ -7,12 +7,16 @@
   "scripts": {
     "start": "electron .",
     "test": "node tests/test_runner.js",
+    "lint": "eslint .",
     "dist": "electron-builder --windows"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/cli": "^4.3.2",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.9.0",
+    "globals": "^17.11.0",
     "tailwindcss": "^4.3.2"
   },
   "build": {

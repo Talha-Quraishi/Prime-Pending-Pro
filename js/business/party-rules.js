@@ -124,6 +124,77 @@ function classifyPartyRule(partyName, rulesConfig = {}) {
     return PARTY_RULE_TYPES.DEFAULT;
 }
 
+/**
+ * Scans raw 2D sheet data for unique parties, their detected order months, and the SIGFA header row.
+ * Single source of truth shared by the Web Worker 'scan' action and the main-thread fallback scanner.
+ * @param {Array<Array<*>>} rawData - Raw sheet rows from XLSX.utils.sheet_to_json(ws, { header: 1 })
+ * @returns {{ rowCount: number, uniqueParties: string[], partyMonthsMap: Object<string,string[]>, headers: Array|null }}
+ */
+function scanSigfaRows(rawData) {
+    const scannedParties = new Set();
+    const partyMonthsRaw = {};
+    let headerIdx = -1;
+
+    if (!rawData || !Array.isArray(rawData)) {
+        return { rowCount: 0, uniqueParties: [], partyMonthsMap: {}, headers: null };
+    }
+
+    for (let i = 0; i < rawData.length; i++) {
+        if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
+        const rowStr = rawData[i].join(',').toUpperCase();
+        if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerIdx = i; break; }
+    }
+
+    if (headerIdx !== -1) {
+        let currentParty = '';
+        let currentDate = '';
+        for (let i = headerIdx + 1; i < rawData.length; i++) {
+            const row = rawData[i];
+            if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
+            const col0 = row[0] ? String(row[0]).trim() : '';
+            const col1 = row[1] ? String(row[1]).trim() : '';
+            const partNo = row[2] ? String(row[2]).trim() : '';
+            const itemName = row[3] ? String(row[3]).trim() : '';
+            const hasItem = partNo || itemName;
+            const col0Upper = col0.toUpperCase();
+            const isOrder = col0Upper.startsWith('APR/SO') ||
+                            col0Upper.startsWith('DEL/') ||
+                            col0Upper.startsWith('DEL-') ||
+                            col0Upper.startsWith('DEL ') ||
+                            /^DEL[0-9]/.test(col0Upper) ||
+                            (col0Upper.startsWith('DEL') && (col0Upper.includes('/') || col0Upper.includes('-') || /\d/.test(col0Upper)));
+            const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
+            if (isParty) {
+                currentParty = col0.replace(/\s+/g, ' ');
+                scannedParties.add(currentParty);
+                currentDate = '';
+            } else if (isOrder) {
+                currentDate = col1;
+            }
+            if (currentParty && currentDate && hasItem) {
+                const partyUpper = currentParty.toUpperCase();
+                const mKey = getMonthKeyFromDate(currentDate);
+                if (mKey) {
+                    if (!partyMonthsRaw[partyUpper]) partyMonthsRaw[partyUpper] = [];
+                    if (!partyMonthsRaw[partyUpper].includes(mKey)) partyMonthsRaw[partyUpper].push(mKey);
+                }
+            }
+        }
+    }
+
+    const partyMonthsMap = {};
+    for (const p in partyMonthsRaw) {
+        partyMonthsMap[p] = partyMonthsRaw[p].sort();
+    }
+
+    return {
+        rowCount: rawData.length,
+        uniqueParties: [...scannedParties].sort(),
+        partyMonthsMap,
+        headers: headerIdx !== -1 ? rawData[headerIdx] : null
+    };
+}
+
 if (typeof self !== 'undefined') {
     self.PARTY_RULE_TYPES = PARTY_RULE_TYPES;
     self.MONTH_NAMES = MONTH_NAMES;
@@ -132,6 +203,7 @@ if (typeof self !== 'undefined') {
     self.getPartyMonthsMap = getPartyMonthsMap;
     self.resolvePartyMerge = resolvePartyMerge;
     self.classifyPartyRule = classifyPartyRule;
+    self.scanSigfaRows = scanSigfaRows;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -142,6 +214,7 @@ if (typeof module !== 'undefined' && module.exports) {
         formatMonthKey,
         getPartyMonthsMap,
         resolvePartyMerge,
-        classifyPartyRule
+        classifyPartyRule,
+        scanSigfaRows
     };
 }

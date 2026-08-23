@@ -36,6 +36,18 @@ window._diagnosticLogs = window._diagnosticLogs || [];
         pushLog('ERROR', args);
         originalError.apply(console, args);
     };
+
+    // Capture uncaught errors so silent UI crashes surface in diagnostic logs
+    window.addEventListener('error', (event) => {
+        const loc = event.filename ? ` (${String(event.filename).split('/').pop()}:${event.lineno})` : '';
+        pushLog('UNCAUGHT', [`${event.message}${loc}`]);
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason;
+        const msg = reason && reason.stack ? reason.stack : String(reason);
+        pushLog('UNHANDLED_REJECTION', [msg]);
+    });
 })();
 
 /**

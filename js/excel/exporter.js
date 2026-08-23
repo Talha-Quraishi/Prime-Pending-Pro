@@ -205,17 +205,36 @@ async function downloadTransformedFile() {
     }, 50);
 }
 
-async function regenerateWorkbook() {
+/**
+ * Regenerates the styled workbook from current data. Expensive for large files,
+ * so callers go through the debounced wrapper below - rapid rule toggles
+ * collapse into a single regeneration after activity settles.
+ */
+function regenerateWorkbookInternal() {
     if (!uploadedFileData || !transformedData || !finalDeduplicatedData) return;
     try {
         const excelStylingToggle = document.getElementById('excelStylingToggle');
         const enableExcelStyling = excelStylingToggle ? excelStylingToggle.checked : true;
         if (typeof generateExcelJSWorkbookBuffer === 'function') {
-            processedWbout = await generateExcelJSWorkbookBuffer(uploadedFileData, transformedData, finalDeduplicatedData, enableExcelStyling);
+            processedWbout = generateExcelJSWorkbookBuffer(uploadedFileData, transformedData, finalDeduplicatedData, enableExcelStyling);
+            // Keep the promise contract: resolve processedWbout once the async export settles
+            Promise.resolve(processedWbout).then((buf) => { processedWbout = buf; }).catch((e) => {
+                console.error("Failed to regenerate workbook:", e);
+            });
         }
     } catch (e) {
         console.error("Failed to regenerate workbook:", e);
     }
+}
+
+const debouncedRegenerate = (typeof debounce === 'function' ? debounce : (fn) => fn)(regenerateWorkbookInternal, 500);
+
+function regenerateWorkbook(immediate = false) {
+    if (immediate && typeof debouncedRegenerate.cancel === 'function') {
+        debouncedRegenerate.cancel();
+        return regenerateWorkbookInternal();
+    }
+    return debouncedRegenerate();
 }
 
 if (typeof self !== 'undefined') {

@@ -24,7 +24,7 @@ const COLUMN_SYNONYMS = {
 function normalizeHeader(str) {
     if (!str && str !== 0) return '';
     return String(str)
-        .replace(/[\._\-#\/\\]/g, ' ')
+        .replace(/[._\-#/\\]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .toUpperCase();
@@ -64,7 +64,7 @@ function findHeaderRowIndex(data) {
         if (!row || !Array.isArray(row) || row.length === 0) continue;
         
         let matchCount = 0;
-        for (const [key, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
+        for (const synonyms of Object.values(COLUMN_SYNONYMS)) {
             if (findColumnIndex(row, synonyms) !== -1) {
                 matchCount++;
             }

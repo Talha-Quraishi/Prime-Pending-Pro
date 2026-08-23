@@ -9,6 +9,10 @@ let chartTrendInstance = null;
 let chartDistributionInstance = null;
 let chartAgingInstance = null;
 
+// Full (untruncated) labels for tooltip callbacks
+let fullPartyLabels = [];
+let fullItemLabels = [];
+
 let dashboardTableRows = [];
 let loadedRowCount = 0;
 const TABLE_CHUNK_SIZE = 50;
@@ -49,6 +53,89 @@ function applyDashboardFilters(immediateCharts = false) {
         return matchesType && matchesSearch;
     });
     updateDashboardUI(currentFilteredData, immediateCharts);
+}
+
+/**
+ * Pure aggregation of deduplicated rows into dashboard metrics.
+ * No DOM access - safe to unit test in Node.
+ * @param {Array<Object>} data - Deduplicated pending order rows
+ * @param {number} discountRate - Discount fraction applied to rate (0 - 1, e.g. 0.61)
+ * @param {Date} [today] - Reference date for aging analysis (defaults to now)
+ * @returns {Object} Aggregated metrics for KPIs, charts, and the detailed table
+ */
+function computeDashboardMetrics(data, discountRate = 0, today) {
+    const parseNum = typeof safeParseFloat === 'function' ? safeParseFloat : (v) => parseFloat(v) || 0;
+    const parseDateFn = typeof parseDMY === 'function' ? parseDMY : (d) => new Date(d || 0);
+    const refDate = today instanceof Date ? today : new Date();
+    refDate.setHours(0, 0, 0, 0);
+
+    const result = {
+        totalValue: 0,
+        totalQty: 0,
+        uniqueItems: [],
+        uniqueParties: [],
+        partiesValueMap: {},
+        itemsQtyMap: {},
+        dateCountMap: {},
+        delCount: 0,
+        aprCount: 0,
+        agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 },
+        tableRows: []
+    };
+
+    if (!data || !Array.isArray(data) || data.length === 0) return result;
+
+    const uniqueItemsSet = new Set();
+    const uniquePartiesSet = new Set();
+
+    for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+
+        const orderNo = row['ORDER NO'] || '';
+        const dateRaw = row['DATE'] || '';
+        const pName = row['PARTY NAME'] || '';
+        const iName = row['ITEM NAME'] || '';
+        const qty = parseNum(row['BALANCE']);
+
+        let rate = parseNum(row['RATE']);
+        if (discountRate > 0) {
+            rate = rate * (1 - discountRate);
+        }
+        const val = qty * rate;
+
+        result.totalValue += val;
+        result.totalQty += qty;
+        if (iName) uniqueItemsSet.add(iName);
+        if (pName) uniquePartiesSet.add(pName);
+
+        if (pName) result.partiesValueMap[pName] = (result.partiesValueMap[pName] || 0) + val;
+        if (iName) result.itemsQtyMap[iName] = (result.itemsQtyMap[iName] || 0) + qty;
+
+        const upperOrder = String(orderNo).toUpperCase();
+        if (upperOrder.startsWith('DEL')) result.delCount++;
+        else if (upperOrder.startsWith('APR')) result.aprCount++;
+
+        let diffDays = 0;
+        const dateObj = parseDateFn(dateRaw);
+        if (dateObj && !isNaN(dateObj.getTime()) && dateObj.getTime() !== 0) {
+            const dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+            result.dateCountMap[dateKey] = (result.dateCountMap[dateKey] || 0) + 1;
+
+            const diffTime = Math.abs(refDate - dateObj);
+            diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 30) result.agingBuckets['0-30']++;
+            else if (diffDays <= 60) result.agingBuckets['31-60']++;
+            else if (diffDays <= 90) result.agingBuckets['61-90']++;
+            else result.agingBuckets['90+']++;
+        }
+
+        result.tableRows.push({ orderNo, dateRaw, diffDays, pName, iName, qty, val });
+    }
+
+    result.uniqueItems = [...uniqueItemsSet];
+    result.uniqueParties = [...uniquePartiesSet];
+    return result;
 }
 
 function loadNextRowChunk() {
@@ -94,13 +181,13 @@ function updateDashboardUI(data, immediateCharts = false) {
     if (dashSkeleton) dashSkeleton.classList.add('hidden');
     if (dashContent) dashContent.classList.remove('hidden');
     
-    let totalValue = 0, totalQty = 0;
+    let totalValue, totalQty;
     const uniqueItems = new Set();
     const uniqueParties = new Set();
     const partiesValueMap = {};
     const itemsQtyMap = {};
     const dateCountMap = {};
-    let delCount = 0, aprCount = 0;
+    let delCount, aprCount;
     
     const agingBuckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
     const today = new Date();
@@ -131,55 +218,18 @@ function updateDashboardUI(data, immediateCharts = false) {
 
     if (tableEmptyState) tableEmptyState.classList.add('hidden');
 
-    data.forEach(row => {
-        const orderNo = row[findColumnIndex(data, 'ORDER NO', 'ORD NO', 'ORDER_NO')] || '';
-        const dateRaw = row[findColumnIndex(data, 'DATE', 'ORD DATE', 'ORDER DATE')] || '';
-        const pName = row[findColumnIndex(data, 'PARTY NAME', 'CUSTOMER', 'PARTY')] || '';
-        const iName = row[findColumnIndex(data, 'ITEM NAME', 'PRODUCT', 'ITEM')] || '';
-        const qty = normalizeNumber(row[findColumnIndex(data, 'BALANCE', 'BAL QTY', 'PENDING QTY', 'QTY')]);
-        
-        let rate = normalizeNumber(row[findColumnIndex(data, 'RATE', 'PRICE', 'UNIT PRICE')]);
-        if (activeDiscountRate > 0) {
-            rate = rate * (1 - activeDiscountRate);
-        }
-        const val = qty * rate;
-
-        totalValue += val;
-        totalQty += qty;
-        if (iName) uniqueItems.add(iName);
-        if (pName) uniqueParties.add(pName);
-
-        if (pName) partiesValueMap[pName] = (partiesValueMap[pName] || 0) + val;
-        if (iName) itemsQtyMap[iName] = (itemsQtyMap[iName] || 0) + qty;
-
-        const upperOrder = String(orderNo).toUpperCase();
-        if (upperOrder.startsWith('DEL')) delCount++;
-        else if (upperOrder.startsWith('APR')) aprCount++;
-
-        const dateObj = parseAnyDate(dateRaw);
-        if (dateObj.getTime() !== 0) {
-            const dateKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-            dateCountMap[dateKey] = (dateCountMap[dateKey] || 0) + 1;
-
-            const diffTime = Math.abs(today - dateObj);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            
-            if (diffDays <= 30) agingBuckets['0-30']++;
-            else if (diffDays <= 60) agingBuckets['31-60']++;
-            else if (diffDays <= 90) agingBuckets['61-90']++;
-            else agingBuckets['90+']++;
-        }
-
-        let diffDays = 0;
-        if (dateObj.getTime() !== 0) {
-            const diffTime = Math.abs(today - dateObj);
-            diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        }
-
-        dashboardTableRows.push({
-            orderNo, dateRaw, diffDays, pName, iName, qty, val
-        });
-    });
+    const metrics = computeDashboardMetrics(data, currentDiscount, today);
+    totalValue = metrics.totalValue;
+    totalQty = metrics.totalQty;
+    metrics.uniqueItems.forEach(i => uniqueItems.add(i));
+    metrics.uniqueParties.forEach(p => uniqueParties.add(p));
+    Object.assign(partiesValueMap, metrics.partiesValueMap);
+    Object.assign(itemsQtyMap, metrics.itemsQtyMap);
+    Object.assign(dateCountMap, metrics.dateCountMap);
+    delCount = metrics.delCount;
+    aprCount = metrics.aprCount;
+    Object.assign(agingBuckets, metrics.agingBuckets);
+    dashboardTableRows = metrics.tableRows;
 
     loadNextRowChunk();
 
@@ -230,8 +280,22 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
     const textColor = isDark ? '#e5e7eb' : '#374151';
     const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
 
-    const partiesLabels = parties.map(d => d[0].substring(0, 15) + '...');
+    // Themed tooltip shared by all charts
+    const tooltipTheme = {
+        backgroundColor: isDark ? 'rgba(23, 23, 33, 0.96)' : 'rgba(255, 255, 255, 0.98)',
+        titleColor: textColor,
+        bodyColor: textColor,
+        borderColor: gridColor,
+        borderWidth: 1,
+        padding: 10,
+        displayColors: false,
+        titleFont: { family: "'Segoe UI', Inter, sans-serif", weight: '600' },
+        bodyFont: { family: "'Segoe UI', Inter, sans-serif" }
+    };
+
+    const partiesLabels = parties.map(d => d[0].substring(0, 15) + (d[0].length > 15 ? '...' : ''));
     const partiesData = parties.map(d => d[1]);
+    fullPartyLabels = parties.map(d => d[0]);
     if (chartPartiesInstance) {
         chartPartiesInstance.data.labels = partiesLabels;
         chartPartiesInstance.data.datasets[0].data = partiesData;
@@ -244,19 +308,28 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             type: 'bar',
             data: {
                 labels: partiesLabels,
-                datasets: [{ label: 'Pending Value (₹)', data: partiesData, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1 }]
+                datasets: [{ label: 'Pending Value (₹)', data: partiesData, backgroundColor: 'rgba(34, 197, 94, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1, borderRadius: 5, maxBarThickness: 34 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipTheme,
+                        callbacks: {
+                            label: (ctx) => ` ${fullPartyLabels[ctx.dataIndex] || ctx.label}: ₹${Number(ctx.parsed.y).toLocaleString('en-IN')}`
+                        }
+                    }
+                },
                 scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } }
             }
         });
     }
 
-    const itemsLabels = items.map(d => d[0].substring(0, 15) + '...');
+    const itemsLabels = items.map(d => d[0].substring(0, 15) + (d[0].length > 15 ? '...' : ''));
     const itemsData = items.map(d => d[1]);
+    fullItemLabels = items.map(d => d[0]);
     if (chartItemsInstance) {
         chartItemsInstance.data.labels = itemsLabels;
         chartItemsInstance.data.datasets[0].data = itemsData;
@@ -270,12 +343,20 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             indexAxis: 'y',
             data: {
                 labels: itemsLabels,
-                datasets: [{ label: 'Qty', data: itemsData, backgroundColor: 'rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1 }]
+                datasets: [{ label: 'Qty', data: itemsData, backgroundColor: 'rgba(59, 130, 246, 0.6)', borderColor: 'rgba(59, 130, 246, 1)', borderWidth: 1, borderRadius: 5, maxBarThickness: 22 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipTheme,
+                        callbacks: {
+                            label: (ctx) => ` ${fullItemLabels[ctx.dataIndex] || ctx.label}: ${Number(ctx.parsed.x).toLocaleString('en-IN')} pcs`
+                        }
+                    }
+                },
                 scales: { x: { ticks: { color: textColor }, grid: { color: gridColor } }, y: { ticks: { color: textColor }, grid: { display: false } } }
             }
         });
@@ -289,17 +370,29 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
         chartTrendInstance.options.scales.x.ticks.color = textColor;
         chartTrendInstance.update('none');
     } else {
+        // Gradient fade under the trend line
+        const gradientFill = ctxTrend.createLinearGradient(0, 0, 0, elTrend.clientHeight || 180);
+        gradientFill.addColorStop(0, 'rgba(168, 85, 247, 0.32)');
+        gradientFill.addColorStop(1, 'rgba(168, 85, 247, 0.02)');
         chartTrendInstance = new Chart(ctxTrend, {
             type: 'line',
             data: {
                 labels: dates,
-                datasets: [{ label: 'Orders', data: trendCounts, borderColor: 'rgba(168, 85, 247, 1)', backgroundColor: 'rgba(168, 85, 247, 0.1)', fill: true, tension: 0.3 }]
+                datasets: [{ label: 'Orders', data: trendCounts, borderColor: 'rgba(168, 85, 247, 1)', backgroundColor: gradientFill, fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 5 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { ticks: { color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } }
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipTheme,
+                        callbacks: {
+                            label: (ctx) => ` ${Number(ctx.parsed.y).toLocaleString('en-IN')} orders`
+                        }
+                    }
+                },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0, color: textColor }, grid: { color: gridColor } }, x: { ticks: { color: textColor }, grid: { display: false } } }
             }
         });
     }
@@ -324,7 +417,20 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'right', labels: { color: textColor } } }
+                cutout: '62%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: textColor } },
+                    tooltip: {
+                        ...tooltipTheme,
+                        callbacks: {
+                            label: (ctx) => {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                                return ` ${ctx.label}: ${Number(ctx.parsed).toLocaleString('en-IN')} (${pct}%)`;
+                            }
+                        }
+                    }
+                }
             }
         });
     }
@@ -356,15 +462,25 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
                         'rgba(249, 115, 22, 1)',
                         'rgba(239, 68, 68, 1)'
                     ],
-                    borderWidth: 1
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    maxBarThickness: 40
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipTheme,
+                        callbacks: {
+                            label: (ctx) => ` ${Number(ctx.parsed.y).toLocaleString('en-IN')} orders`
+                        }
+                    }
+                },
                 scales: {
-                    y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+                    y: { beginAtZero: true, ticks: { color: textColor, stepSize: 1, precision: 0 }, grid: { color: gridColor } },
                     x: { ticks: { color: textColor }, grid: { display: false } }
                 }
             }
@@ -418,6 +534,32 @@ function setPriceMode(mode, customVal = null) {
     applyDashboardFilters(true);
 }
 
+/**
+ * Re-colors all active chart instances after a light/dark theme switch.
+ */
+function updateChartsTheme() {
+    const isDark = document.documentElement.classList.contains('dark');
+    const textColor = isDark ? '#e5e7eb' : '#374151';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+
+    const applyScales = (chart) => {
+        if (!chart || !chart.options || !chart.options.scales) return;
+        for (const axis of Object.values(chart.options.scales)) {
+            if (axis.ticks) axis.ticks.color = textColor;
+            if (axis.grid && axis.grid.color) axis.grid.color = gridColor;
+        }
+    };
+
+    [chartPartiesInstance, chartItemsInstance, chartTrendInstance, chartDistributionInstance, chartAgingInstance].forEach(chart => {
+        if (!chart) return;
+        applyScales(chart);
+        if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+            chart.options.plugins.legend.labels.color = textColor;
+        }
+        chart.update('none');
+    });
+}
+
 function setupDiscountListeners() {
     const btnMRP = document.getElementById('btnPriceMRP');
     const btn61 = document.getElementById('btnPrice61');
@@ -455,6 +597,13 @@ function initializeDashboard() {
     const filterDel = document.getElementById('filterDel');
     const filterApr = document.getElementById('filterApr');
     const dataTableContainer = document.getElementById('dataTableContainer');
+    // Empty-state CTA: jump to the Process File view
+    const dashGoProcessBtn = document.getElementById('dashGoProcessBtn');
+    if (dashGoProcessBtn) {
+        dashGoProcessBtn.addEventListener('click', () => {
+            if (typeof switchMainView === 'function') switchMainView('process');
+        });
+    }
 
     if (searchInput) searchInput.addEventListener('input', (typeof debounce === 'function' ? debounce : (fn) => fn)(applyDashboardFilters, 150));
     if (filterAll) filterAll.addEventListener('click', () => setFilterType('ALL'));
@@ -474,11 +623,13 @@ function initializeDashboard() {
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        computeDashboardMetrics,
         setFilterType,
         applyDashboardFilters,
         loadNextRowChunk,
         updateDashboardUI,
         renderCharts,
+        updateChartsTheme,
         setPriceMode,
         initializeDashboard
     };
