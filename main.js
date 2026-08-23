@@ -246,7 +246,118 @@ ipcMain.handle('delete-from-history', async (event, id) => {
   }
 });
 
+ipcMain.handle('get-storage-stats', async () => {
+  try {
+    let totalBytes = 0;
+    let fileCount = 0;
+    const files = await fs.promises.readdir(historyDir).catch(() => []);
+    for (const f of files) {
+      if (f.endsWith('.xlsx')) {
+        const stat = await fs.promises.stat(path.join(historyDir, f)).catch(() => null);
+        if (stat) {
+          totalBytes += stat.size;
+          fileCount++;
+        }
+      }
+    }
+    const indexList = await safeReadHistoryIndex();
+    return {
+      success: true,
+      historyCount: indexList.length,
+      fileCount,
+      totalBytes,
+      historyDir
+    };
+  } catch (e) {
+    console.error("get-storage-stats error:", e);
+    return { success: false, historyCount: 0, fileCount: 0, totalBytes: 0, historyDir };
+  }
+});
+
+ipcMain.handle('purge-history', async (event, options = {}) => {
+  try {
+    const { olderThanDays, maxItems, purgeAll } = options;
+    let indexList = await safeReadHistoryIndex();
+    const now = Date.now();
+    let toKeep = [];
+    let toDelete = [];
+
+    if (purgeAll) {
+      toDelete = [...indexList];
+      toKeep = [];
+    } else {
+      for (let i = 0; i < indexList.length; i++) {
+        const item = indexList[i];
+        let deleteThis = false;
+
+        if (typeof olderThanDays === 'number' && olderThanDays > 0) {
+          const itemTime = new Date(item.date).getTime();
+          const ageDays = (now - itemTime) / (1000 * 60 * 60 * 24);
+          if (ageDays > olderThanDays) {
+            deleteThis = true;
+          }
+        }
+
+        if (typeof maxItems === 'number' && maxItems > 0 && i >= maxItems) {
+          deleteThis = true;
+        }
+
+        if (deleteThis) {
+          toDelete.push(item);
+        } else {
+          toKeep.push(item);
+        }
+      }
+    }
+
+    let deletedCount = 0;
+    let freedBytes = 0;
+
+    for (const item of toDelete) {
+      if (item && item.id) {
+        const p = getSafeHistoryPath(item.id);
+        if (p) {
+          try {
+            const stat = await fs.promises.stat(p).catch(() => null);
+            if (stat) freedBytes += stat.size;
+            await fs.promises.unlink(p).catch(() => {});
+            deletedCount++;
+          } catch (err) {}
+        }
+      }
+    }
+
+    await atomicWriteFile(historyIndexPath, JSON.stringify(toKeep, null, 2));
+
+    // Also clean up any orphaned .xlsx files not in toKeep
+    try {
+      const remainingIds = new Set(toKeep.map(k => k.id));
+      const diskFiles = await fs.promises.readdir(historyDir).catch(() => []);
+      for (const df of diskFiles) {
+        if (df.endsWith('.xlsx')) {
+          const id = path.basename(df, '.xlsx');
+          if (!remainingIds.has(id)) {
+            const p = getSafeHistoryPath(id);
+            if (p) await fs.promises.unlink(p).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {}
+
+    return {
+      success: true,
+      deletedCount,
+      freedBytes,
+      remainingCount: toKeep.length
+    };
+  } catch (e) {
+    console.error("purge-history error:", e);
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('load-config', async () => {
+
   try {
     const content = await fs.promises.readFile(configPath, 'utf8');
     const parsed = JSON.parse(content);
@@ -404,8 +515,37 @@ app.on('second-instance', () => {
   }
 });
 
+async function autoRunRetentionCleanup() {
+  try {
+    if (!fs.existsSync(configPath)) return;
+    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf8'));
+    const days = parseInt(config.historyRetentionDays, 10);
+    if (!isNaN(days) && days > 0) {
+      const now = Date.now();
+      const indexList = await safeReadHistoryIndex();
+      const toKeep = [];
+      for (const item of indexList) {
+        const itemTime = new Date(item.date).getTime();
+        const ageDays = (now - itemTime) / (1000 * 60 * 60 * 24);
+        if (ageDays > days) {
+          const p = getSafeHistoryPath(item.id);
+          if (p) await fs.promises.unlink(p).catch(() => {});
+        } else {
+          toKeep.push(item);
+        }
+      }
+      if (toKeep.length !== indexList.length) {
+        await atomicWriteFile(historyIndexPath, JSON.stringify(toKeep, null, 2));
+      }
+    }
+  } catch (e) {
+    console.warn("Auto-retention cleanup error:", e);
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
+  autoRunRetentionCleanup().catch(() => {});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

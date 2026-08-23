@@ -19,6 +19,7 @@ const suites = [
     { name: "Storage Migrations & Versioning", path: "./test_storage_migrations.js" },
     { name: "Security & Path Traversal Checks", path: "./test_security.js" },
     { name: "UI Dashboard Metrics", path: "./test_ui_dashboard.js" },
+    { name: "Advanced Analytics, Storage Retention & Rule Profiles", path: "./test_advanced_features.js" },
     { name: "Large-Scale Performance Benchmarks", path: "./test_perf.js" }
 ];
 

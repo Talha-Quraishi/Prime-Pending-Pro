@@ -25,12 +25,12 @@ function showConfirmDialog(options = {}) {
         } = options;
 
         const overlay = document.createElement('div');
-        overlay.className = 'fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6';
+        overlay.className = 'modal-overlay fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6';
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
 
         const card = document.createElement('div');
-        card.className = 'ms-card springy-hover p-5 max-w-sm w-full flex flex-col gap-3 scale-95 opacity-0 transition-all duration-150';
+        card.className = 'ms-card modal-card springy-hover p-5 max-w-sm w-full flex flex-col gap-3 scale-95 opacity-0 transition-all duration-150';
 
         const heading = document.createElement('h3');
         heading.className = 'text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider';
@@ -51,8 +51,8 @@ function showConfirmDialog(options = {}) {
         const confirmBtn = document.createElement('button');
         confirmBtn.type = 'button';
         confirmBtn.className = danger
-            ? 'py-2 rounded font-bold text-xs bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all focus:outline-none'
-            : 'py-2 rounded font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all focus:outline-none';
+            ? 'modal-btn-confirm-danger py-2 rounded font-bold text-xs bg-red-600 hover:bg-red-700 text-white shadow-sm transition-all focus:outline-none'
+            : 'modal-btn-confirm-primary py-2 rounded font-bold text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all focus:outline-none';
         confirmBtn.textContent = confirmLabel;
 
         buttonRow.appendChild(cancelBtn);

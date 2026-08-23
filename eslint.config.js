@@ -65,6 +65,8 @@ const sharedAppGlobals = {
     // storage/rules-storage.js
     RULES_STORAGE_VERSION: 'readonly',
     migrateRulesData: 'readonly',
+    mergeRulesData: 'readonly',
+    createRulesProfile: 'readonly',
     getRulesState: 'readonly',
     setRulesState: 'readonly',
     loadRulesFromStorage: 'readonly',
@@ -83,6 +85,9 @@ const sharedAppGlobals = {
     setupSettingsTabs: 'readonly',
     setupDiagnosticListeners: 'readonly',
     initializeSettingsUI: 'readonly',
+    initializeStorageManagerUI: 'readonly',
+    refreshStorageStats: 'readonly',
+    loadHistoryUI: 'readonly',
     saveCurrentUploadToHistory: 'readonly',
     loadHistoryTable: 'readonly',
     renderHistoryRows: 'readonly',
@@ -94,11 +99,14 @@ const sharedAppGlobals = {
     // ui/dashboard.js
     computeDashboardMetrics: 'readonly',
     setFilterType: 'readonly',
+    setDrilldownFilter: 'readonly',
+    clearDrilldownFilter: 'readonly',
     applyDashboardFilters: 'readonly',
     loadNextRowChunk: 'readonly',
     updateDashboardUI: 'readonly',
     renderCharts: 'readonly',
     updateChartsTheme: 'readonly',
+    exportExecutiveReport: 'readonly',
     setPriceMode: 'readonly',
     setupDiscountListeners: 'readonly',
     initializeDashboard: 'readonly',
@@ -113,6 +121,7 @@ const sharedAppGlobals = {
     currentFilterType: 'writable',
     currentDiscount: 'writable',
     activePriceMode: 'writable',
+    activeDrilldown: 'writable',
     debouncedRenderCharts: 'readonly',
 
     // excel/reader.js + exporter.js + processor.js
