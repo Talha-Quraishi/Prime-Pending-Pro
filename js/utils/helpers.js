@@ -5,11 +5,12 @@
 
 // Diagnostic Logging Buffer
 const MAX_DIAGNOSTIC_LOGS = 200;
-window._diagnosticLogs = window._diagnosticLogs || [];
+const globalScope = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
+globalScope._diagnosticLogs = globalScope._diagnosticLogs || [];
 
 (function setupDiagnosticLogging() {
-    if (window._diagnosticLoggingInitialized) return;
-    window._diagnosticLoggingInitialized = true;
+    if (globalScope._diagnosticLoggingInitialized || typeof window === 'undefined') return;
+    globalScope._diagnosticLoggingInitialized = true;
 
     const originalLog = console.log;
     const originalWarn = console.warn;
@@ -18,9 +19,9 @@ window._diagnosticLogs = window._diagnosticLogs || [];
     function pushLog(level, args) {
         const time = new Date().toISOString().substring(11, 19);
         const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-        window._diagnosticLogs.push(`[${time}] [${level}] ${msg}`);
-        if (window._diagnosticLogs.length > MAX_DIAGNOSTIC_LOGS) {
-            window._diagnosticLogs.shift();
+        globalScope._diagnosticLogs.push(`[${time}] [${level}] ${msg}`);
+        if (globalScope._diagnosticLogs.length > MAX_DIAGNOSTIC_LOGS) {
+            globalScope._diagnosticLogs.shift();
         }
     }
 
@@ -154,6 +155,19 @@ function convertIpcBuffer(data) {
 }
 
 /**
+ * HTML entity escaper to protect against DOM-based XSS when interpolating untrusted text.
+ */
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
  * Safe table cell DOM creator
  */
 function createTableCell(text, className, title) {
@@ -170,6 +184,7 @@ if (typeof module !== 'undefined' && module.exports) {
         debounce,
         animateValue,
         convertIpcBuffer,
+        escapeHtml,
         createTableCell
     };
 }

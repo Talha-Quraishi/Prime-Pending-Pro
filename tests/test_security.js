@@ -86,8 +86,63 @@ test("3. Excel party names with HTML/XSS payloads preserved as raw strings", () 
     assert.strictEqual(deduplicated[0]['PARTY NAME'], xssParty);
 });
 
+// 4. escapeHtml sanitization utility
+test("4. escapeHtml safely encodes all HTML sensitive characters", () => {
+    const { escapeHtml } = require('../js/utils/helpers');
+    assert.strictEqual(escapeHtml('<script>alert("XSS & \'attack\'")</script>'), '&lt;script&gt;alert(&quot;XSS &amp; &#039;attack&#039;&quot;)&lt;/script&gt;');
+    assert.strictEqual(escapeHtml(null), '');
+    assert.strictEqual(escapeHtml(undefined), '');
+    assert.strictEqual(escapeHtml(12345), '12345');
+});
+
+// 5. Prototype pollution sanitization guard
+test("5. Prototype pollution keys are strictly stripped from configuration payloads", () => {
+    function sanitizeConfigObject(obj) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+        const clean = {};
+        for (const key of Object.keys(obj)) {
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+            const val = obj[key];
+            if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+                clean[key] = sanitizeConfigObject(val);
+            } else if (Array.isArray(val)) {
+                clean[key] = val.map(item => (item !== null && typeof item === 'object' && !Array.isArray(item)) ? sanitizeConfigObject(item) : item);
+            } else {
+                clean[key] = val;
+            }
+        }
+        return clean;
+    }
+
+    const payload = JSON.parse('{"theme":"dark","__proto__":{"polluted":true},"nested":{"constructor":"evil","validKey":"ok"}}');
+    const sanitized = sanitizeConfigObject(payload);
+    assert.strictEqual(sanitized.theme, 'dark');
+    assert.strictEqual(sanitized.polluted, undefined);
+    assert.strictEqual(sanitized.__proto__.polluted, undefined);
+    assert.strictEqual(sanitized.nested.constructor, Object);
+    assert.strictEqual(sanitized.nested.validKey, 'ok');
+});
+
+// 6. BrowserWindow Security Configuration in main.js
+test("6. main.js enables contextIsolation, sandbox, webSecurity, and denies popups/navigation", () => {
+    const fs = require('fs');
+    const mainCode = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+    
+    assert.ok(mainCode.includes('contextIsolation: true'), "main.js must enable contextIsolation");
+    assert.ok(mainCode.includes('nodeIntegration: false'), "main.js must disable nodeIntegration");
+    assert.ok(mainCode.includes('sandbox: true'), "main.js must enable sandbox");
+    assert.ok(mainCode.includes('webSecurity: true'), "main.js must enable webSecurity");
+    assert.ok(mainCode.includes('allowRunningInsecureContent: false'), "main.js must disallow insecure content");
+    assert.ok(mainCode.includes('setWindowOpenHandler'), "main.js must handle setWindowOpenHandler to deny popups");
+    assert.ok(mainCode.includes("'will-navigate'"), "main.js must prevent will-navigate");
+    assert.ok(mainCode.includes("'will-redirect'"), "main.js must prevent will-redirect");
+    assert.ok(mainCode.includes("'will-attach-webview'"), "main.js must prevent will-attach-webview");
+    assert.ok(mainCode.includes('setPermissionRequestHandler'), "main.js must deny ambient permissions");
+});
+
 if (failed > 0) {
     throw new Error(`Security tests failed: ${failed} failure(s)`);
 }
 
 module.exports = { passed, failed };
+
