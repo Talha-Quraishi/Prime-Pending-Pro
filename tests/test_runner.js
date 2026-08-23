@@ -18,6 +18,7 @@ const suites = [
     { name: "Party Order Month Selection", path: "./test_party_month_selection.js" },
     { name: "Storage Migrations & Versioning", path: "./test_storage_migrations.js" },
     { name: "Security & Path Traversal Checks", path: "./test_security.js" },
+    { name: "UI Dashboard Metrics", path: "./test_ui_dashboard.js" },
     { name: "Large-Scale Performance Benchmarks", path: "./test_perf.js" }
 ];
 

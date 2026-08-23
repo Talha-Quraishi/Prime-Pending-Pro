@@ -64,8 +64,8 @@ function toggleTheme() {
     const isDark = htmlElement.classList.contains('dark');
     const newTheme = isDark ? 'light' : 'dark';
     applyTheme(newTheme);
-    if (window.electronAPI && typeof persistConfiguration === 'function') {
-        persistConfiguration({ theme: newTheme });
+    if (typeof persistConfigValue === 'function') {
+        persistConfigValue('theme', newTheme);
     } else {
         localStorage.setItem('theme', newTheme);
     }
@@ -73,6 +73,26 @@ function toggleTheme() {
         updateChartsTheme();
     }
     return newTheme;
+}
+
+/**
+ * Toggles the keyboard shortcuts cheat-sheet overlay.
+ */
+function toggleShortcutOverlay() {
+    const overlay = document.getElementById('shortcutOverlay');
+    const card = document.getElementById('shortcutCard');
+    if (!overlay || !card) return;
+
+    const willShow = overlay.classList.contains('hidden');
+    if (willShow) {
+        overlay.classList.remove('hidden');
+        requestAnimationFrame(() => card.classList.remove('scale-95', 'opacity-0'));
+        const closeBtn = document.getElementById('shortcutCloseBtn');
+        if (closeBtn) closeBtn.focus();
+    } else {
+        card.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.classList.add('hidden'), 140);
+    }
 }
 
 function initializeNavigation() {
@@ -94,8 +114,8 @@ function initializeNavigation() {
         hamburgerBtn.addEventListener('click', () => {
             sidebar.classList.toggle('collapsed');
             const isCollapsed = sidebar.classList.contains('collapsed');
-            if (window.electronAPI && typeof persistConfiguration === 'function') {
-                persistConfiguration({ sidebarCollapsed: isCollapsed });
+            if (typeof persistConfigValue === 'function') {
+                persistConfigValue('sidebarCollapsed', isCollapsed);
             } else {
                 localStorage.setItem('sidebarCollapsed', String(isCollapsed));
             }
@@ -106,8 +126,8 @@ function initializeNavigation() {
         themeToggleSwitch.addEventListener('change', () => {
             const newTheme = themeToggleSwitch.checked ? 'dark' : 'light';
             applyTheme(newTheme);
-            if (window.electronAPI && typeof persistConfiguration === 'function') {
-                persistConfiguration({ theme: newTheme });
+            if (typeof persistConfigValue === 'function') {
+                persistConfigValue('theme', newTheme);
             } else {
                 localStorage.setItem('theme', newTheme);
             }
@@ -128,6 +148,17 @@ function initializeNavigation() {
     const winMax = document.getElementById('winMax');
     const winClose = document.getElementById('winClose');
 
+    const shortcutCloseBtn = document.getElementById('shortcutCloseBtn');
+    if (shortcutCloseBtn) {
+        shortcutCloseBtn.addEventListener('click', () => toggleShortcutOverlay());
+    }
+    const overlay = document.getElementById('shortcutOverlay');
+    if (overlay) {
+        overlay.addEventListener('mousedown', (e) => {
+            if (e.target === overlay) toggleShortcutOverlay();
+        });
+    }
+
     if (window.electronAPI) {
         if (winMin) winMin.addEventListener('click', () => window.electronAPI.minimize());
         if (winMax) winMax.addEventListener('click', () => window.electronAPI.maximize());
@@ -137,6 +168,13 @@ function initializeNavigation() {
         if (winMax) winMax.style.display = 'none';
         if (winClose) winClose.style.display = 'none';
     }
+
+    // Pause decorative animations while the window is minimized/unfocused
+    // (saves GPU/battery - nothing is visible anyway)
+    const setUiIdle = (idle) => document.documentElement.classList.toggle('ui-idle', idle);
+    window.addEventListener('blur', () => setUiIdle(true));
+    window.addEventListener('focus', () => setUiIdle(false));
+    document.addEventListener('visibilitychange', () => setUiIdle(document.visibilityState !== 'visible'));
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -144,6 +182,7 @@ if (typeof module !== 'undefined' && module.exports) {
         switchMainView,
         applyTheme,
         toggleTheme,
+        toggleShortcutOverlay,
         initializeNavigation
     };
 }

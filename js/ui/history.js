@@ -79,6 +79,7 @@ function renderHistoryRows(list) {
     }
     if (historyEmptyState) historyEmptyState.classList.add('hidden');
     
+    const rowFragment = document.createDocumentFragment();
     filtered.forEach(item => {
         const tr = document.createElement('tr');
         tr.className = "hover:bg-gray-50/50 dark:hover:bg-[#1a1a1a]/30 transition-colors border-b border-gray-100 dark:border-neutral-800/60";
@@ -129,8 +130,10 @@ function renderHistoryRows(list) {
         actionTd.appendChild(actionWrap);
         tr.appendChild(actionTd);
         
-        historyTableBody.appendChild(tr);
+        rowFragment.appendChild(tr);
     });
+
+    historyTableBody.appendChild(rowFragment);
 
     if (window.lucide) {
         window.lucide.createIcons();
@@ -203,7 +206,16 @@ async function downloadHistoricalRaw(id, filename) {
 
 async function deleteHistoricalRecord(id) {
     if (!window.electronAPI) return;
-    if (!confirm("Are you sure you want to delete this historical record?")) return;
+
+    const confirmed = typeof showConfirmDialog === 'function'
+        ? await showConfirmDialog({
+            title: 'Delete record?',
+            message: 'This permanently removes the historical file from disk.\nThis action cannot be undone.',
+            confirmLabel: 'Delete',
+            danger: true
+        })
+        : true;
+    if (!confirmed) return;
     
     try {
         const success = await window.electronAPI.deleteFromHistory(id);
@@ -224,6 +236,14 @@ function initializeHistory() {
     if (historySearch) {
         historySearch.addEventListener('input', () => {
             loadHistoryTable();
+        });
+    }
+
+    // Empty-state CTA: jump to the Process File view
+    const historyGoProcessBtn = document.getElementById('historyGoProcessBtn');
+    if (historyGoProcessBtn) {
+        historyGoProcessBtn.addEventListener('click', () => {
+            if (typeof switchMainView === 'function') switchMainView('process');
         });
     }
 }

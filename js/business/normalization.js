@@ -69,7 +69,6 @@ function parseDMY(dateInput) {
             
             // Auto-detect and swap if month is out-of-bounds (MM-DD-YYYY format)
             if (m < 0 || m > 11) {
-                const temp = d;
                 d = parseInt(parts[1], 10);
                 m = parseInt(parts[0], 10) - 1;
             }

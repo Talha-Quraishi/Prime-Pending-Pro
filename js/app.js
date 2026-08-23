@@ -346,13 +346,10 @@ async function persistConfigValue(key, value) {
 // --- Application Initialization Coordinator ---
 
 async function initializeApp() {
+    // package.json -> app.getVersion() -> preload (additionalArguments) -> renderer
     let versionStr = '3.30.22';
-    if (window.electronAPI && window.electronAPI.getAppVersion) {
-        try {
-            versionStr = await window.electronAPI.getAppVersion();
-        } catch (e) {
-            console.warn("Could not retrieve version from electronAPI:", e);
-        }
+    if (window.electronAPI && window.electronAPI.appVersion && window.electronAPI.appVersion !== 'unknown') {
+        versionStr = window.electronAPI.appVersion;
     }
     
     document.title = `Pending Order Maker v${versionStr}`;
@@ -365,7 +362,7 @@ async function initializeApp() {
     const watermarkEl = document.getElementById('watermark');
     if (watermarkEl) watermarkEl.title = `Prime Pending Pro v${versionStr}`;
 
-    let config = {};
+    let config;
     if (window.electronAPI && typeof window.electronAPI.loadConfig === 'function') {
         const watermarkVer = document.getElementById('watermarkVersion');
         if (watermarkVer) watermarkVer.textContent = `v${versionStr} (Desktop)`;
@@ -489,19 +486,18 @@ async function initializeApp() {
         });
     }
 
-    // Party rules search filter
-    const partySearch = document.getElementById('partySearch');
-    if (partySearch) {
-        partySearch.addEventListener('input', (typeof debounce === 'function' ? debounce : (fn) => fn)(() => {
-            if (typeof renderPartyRulesList === 'function') {
-                renderPartyRulesList();
-            }
-        }, 100));
-    }
+    // Party rules search filter is bound once inside js/rules.js (debounced)
 
     // Global keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         const isInput = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+
+        // '?' toggles the keyboard shortcuts cheat sheet
+        if (e.key === '?' && !isInput) {
+            e.preventDefault();
+            if (typeof toggleShortcutOverlay === 'function') toggleShortcutOverlay();
+            return;
+        }
 
         // Ctrl+O: Open file
         if ((e.ctrlKey || e.metaKey) && (e.key === 'o' || e.key === 'O')) {
@@ -520,8 +516,8 @@ async function initializeApp() {
 
         // Ctrl+S: Download transformed file
         if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-            const dlBtn = document.getElementById('downloadButton');
-            if (dlBtn && !dlBtn.disabled && !dlBtn.classList.contains('hidden')) {
+            const dlBtn = document.getElementById('downloadExcelButton');
+            if (dlBtn && !dlBtn.disabled && !dlBtn.classList.contains('hidden') && !isInput) {
                 e.preventDefault();
                 dlBtn.click();
                 return;
@@ -539,8 +535,14 @@ async function initializeApp() {
             }
         }
 
-        // Escape: Reset app or clear search
+        // Escape: Close cheat sheet, clear search, or reset app
         if (e.key === 'Escape') {
+            const shortcutOverlay = document.getElementById('shortcutOverlay');
+            if (shortcutOverlay && !shortcutOverlay.classList.contains('hidden')) {
+                e.preventDefault();
+                if (typeof toggleShortcutOverlay === 'function') toggleShortcutOverlay();
+                return;
+            }
             const pSearch = document.getElementById('partySearch');
             if (pSearch && document.activeElement === pSearch && pSearch.value) {
                 e.preventDefault();

@@ -71,8 +71,6 @@ function handleFile(file) {
 
         if (scanIndicator) scanIndicator.classList.remove('hidden');
 
-        // Show skeleton loading items immediately
-        if (typeof showPartyRulesSkeleton === 'function') showPartyRulesSkeleton();
         if (partySelectorCard) partySelectorCard.classList.remove('hidden');
 
         // Auto-scan: offload to web worker to keep UI thread 100% responsive
@@ -127,64 +125,19 @@ function handleFile(file) {
                     const ws = wb.Sheets[wb.SheetNames[0]];
                     const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-                    if (statTotalRows) statTotalRows.textContent = rawData.length;
+                    // Shared scan logic (same as Web Worker 'scan' action)
+                    const scan = typeof scanSigfaRows === 'function'
+                        ? scanSigfaRows(rawData)
+                        : { rowCount: rawData.length, uniqueParties: [], partyMonthsMap: {}, headers: null };
 
-                    const scannedParties = new Set();
-                    const partyMonthsRaw = {};
-                    let headerIdx = -1;
-                    for (let i = 0; i < rawData.length; i++) {
-                        if (!rawData[i] || typeof rawData[i].join !== 'function') continue;
-                        const rowStr = rawData[i].join(',').toUpperCase();
-                        if (rowStr.includes('ORDER NO') && rowStr.includes('PART NO.')) { headerIdx = i; break; }
-                    }
-                    if (headerIdx !== -1) {
-                        let currentParty = '';
-                        let currentDate = '';
-                        for (let i = headerIdx + 1; i < rawData.length; i++) {
-                            const row = rawData[i];
-                            if (!row || !Array.isArray(row) || row.every(c => c === "")) continue;
-                            const col0 = row[0] ? String(row[0]).trim() : '';
-                            const col1 = row[1] ? String(row[1]).trim() : '';
-                            const partNo = row[2] ? String(row[2]).trim() : '';
-                            const itemName = row[3] ? String(row[3]).trim() : '';
-                            const hasItem = partNo || itemName;
-                            const col0Upper = col0.toUpperCase();
-                            const isOrder = col0Upper.startsWith('APR/SO') ||
-                                            col0Upper.startsWith('DEL/') ||
-                                            col0Upper.startsWith('DEL-') ||
-                                            col0Upper.startsWith('DEL ') ||
-                                            /^DEL[0-9]/.test(col0Upper) ||
-                                            (col0Upper.startsWith('DEL') && (col0Upper.includes('/') || col0Upper.includes('-') || /\d/.test(col0Upper)));
-                            const isParty = col0 && !isOrder && !hasItem && !col0Upper.startsWith('TOTAL');
-                            if (isParty) {
-                                currentParty = col0.replace(/\s+/g, ' ');
-                                scannedParties.add(currentParty);
-                                currentDate = '';
-                            } else if (isOrder) {
-                                currentDate = col1;
-                            }
-                            if (currentParty && currentDate && hasItem) {
-                                const partyUpper = currentParty.toUpperCase();
-                                const monthFn = typeof getMonthKeyFromDate === 'function' ? getMonthKeyFromDate : null;
-                                const mKey = monthFn ? monthFn(currentDate) : null;
-                                if (mKey) {
-                                    if (!partyMonthsRaw[partyUpper]) partyMonthsRaw[partyUpper] = [];
-                                    if (!partyMonthsRaw[partyUpper].includes(mKey)) partyMonthsRaw[partyUpper].push(mKey);
-                                }
-                            }
-                        }
-                    }
+                    if (statTotalRows) statTotalRows.textContent = scan.rowCount;
 
-                    scannedPartyMonthsMap = {};
-                    for (const p in partyMonthsRaw) {
-                        scannedPartyMonthsMap[p] = partyMonthsRaw[p].sort();
-                    }
+                    uniquePartiesList = scan.uniqueParties;
+                    scannedPartyMonthsMap = scan.partyMonthsMap;
 
-                    uniquePartiesList = [...scannedParties].sort();
                     if (typeof updatePartiesDatalist === 'function') updatePartiesDatalist();
-                    const fallbackHeaders = headerIdx !== -1 ? rawData[headerIdx] : null;
-                    
-                    validateExcelSchema(fallbackHeaders);
+
+                    validateExcelSchema(scan.headers);
 
                     if (scanIndicator) scanIndicator.classList.add('hidden');
                     if (partySelectorCard) {
@@ -320,12 +273,27 @@ function initializeDragAndDrop() {
         });
     }
 
+    // Empty-state CTA in the file preview card
+    const emptyBrowseBtn = document.getElementById('emptyBrowseBtn');
+    if (emptyBrowseBtn) {
+        emptyBrowseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            triggerFileSelection();
+        });
+    }
+
     if (fileDropArea) {
         fileDropArea.addEventListener('click', (e) => {
             triggerFileSelection();
         });
 
         fileDropArea.addEventListener('keydown', (e) => {
+            // Ignore modified presses (Ctrl/Meta/Alt/Shift+Enter) - global shortcuts
+            // in app.js own those combinations (e.g. Ctrl+Enter = Transform File).
+            // Without this guard, a focused dropzone/Browse button re-opens the
+            // file picker on Ctrl+Enter before the global handler runs.
+            if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 triggerFileSelection();

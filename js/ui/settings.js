@@ -24,90 +24,8 @@ function setupSettingsTabs() {
     });
 }
 
-function exportRulesConfig() {
-    const payload = {
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        excludedParties: (typeof excludedParties !== 'undefined' ? excludedParties : []),
-        deduplicateParties: (typeof deduplicateParties !== 'undefined' ? deduplicateParties : []),
-        specialParties: (typeof specialParties !== 'undefined' ? specialParties : []),
-        fullyExcludedParties: (typeof fullyExcludedParties !== 'undefined' ? fullyExcludedParties : []),
-        partyMerges: (typeof partyMerges !== 'undefined' ? partyMerges : {})
-    };
-
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `prime_rules_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-
-    if (typeof showToast === 'function') {
-        showToast("Rules configuration exported! 💾", "success");
-    }
-}
-
-function importRulesConfig(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        try {
-            const data = JSON.parse(event.target.result);
-            if (typeof data !== 'object' || data === null) throw new Error("Invalid format");
-
-            if (typeof excludedParties !== 'undefined' && Array.isArray(data.excludedParties)) {
-                excludedParties = data.excludedParties.map(p => String(p).toUpperCase());
-            }
-            if (typeof deduplicateParties !== 'undefined' && Array.isArray(data.deduplicateParties)) {
-                deduplicateParties = data.deduplicateParties.map(p => String(p).toUpperCase());
-            }
-            if (typeof specialParties !== 'undefined' && Array.isArray(data.specialParties)) {
-                specialParties = data.specialParties.map(p => String(p).toUpperCase());
-            }
-            if (typeof fullyExcludedParties !== 'undefined' && Array.isArray(data.fullyExcludedParties)) {
-                fullyExcludedParties = data.fullyExcludedParties.map(p => String(p).toUpperCase());
-            }
-            if (typeof partyMerges !== 'undefined' && typeof data.partyMerges === 'object') {
-                partyMerges = {};
-                for (const k in data.partyMerges) {
-                    partyMerges[k.toUpperCase()] = data.partyMerges[k];
-                }
-            }
-
-            if (typeof partyRulesMap !== 'undefined') {
-                partyRulesMap = {};
-                if (typeof excludedParties !== 'undefined') excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
-                if (typeof deduplicateParties !== 'undefined') deduplicateParties.forEach(p => partyRulesMap[p] = 'keep-latest');
-                if (typeof specialParties !== 'undefined') specialParties.forEach(p => partyRulesMap[p] = 'marka');
-                if (typeof fullyExcludedParties !== 'undefined') fullyExcludedParties.forEach(p => partyRulesMap[p] = 'exclude');
-            }
-
-            if (typeof persistRulesToStorage === 'function') {
-                persistRulesToStorage();
-            }
-            if (typeof renderChipsInUI === 'function') {
-                renderChipsInUI();
-            }
-            if (typeof renderPartyRulesList === 'function') {
-                renderPartyRulesList();
-            }
-
-            if (typeof showToast === 'function') {
-                showToast("Rules imported successfully! 📥", "success");
-            }
-        } catch (err) {
-            console.error("Failed to import rules config:", err);
-            if (typeof showToast === 'function') {
-                showToast("Failed to parse rules backup file.", "error");
-            }
-        }
-        e.target.value = '';
-    };
-    reader.readAsText(file);
-}
+// NOTE: Rules backup/restore logic lives solely in js/rules.js (exportRulesConfig / importRulesConfig).
+// It owns the full schema including partyMonthSelections; do not duplicate it here.
 
 function setupDiagnosticListeners() {
     const copyDiagnosticBtn = document.getElementById('copyDiagnosticBtn');
@@ -145,9 +63,244 @@ function setupDiagnosticListeners() {
     }
 }
 
+/**
+ * Prime-Pending-Pro Updater UI Controller
+ * Drives the Software Updates card states: idle -> checking -> available -> downloading -> downloaded,
+ * plus post-download actions (Install / Open file location / Delete downloaded file).
+ */
+
+const UPDATER_IDLE_LABEL = 'Check for Updates';
+
+function getUpdateEl(id) {
+    return document.getElementById(id);
+}
+
+function setUpdaterCheckButton(label, disabled) {
+    const btn = getUpdateEl('checkForUpdatesBtn');
+    const text = getUpdateEl('updateBtnText');
+    const spin = getUpdateEl('updateSpin');
+    if (btn) btn.disabled = !!disabled;
+    if (text) text.textContent = label;
+    if (spin) spin.classList.toggle('hidden', !disabled);
+}
+
+function setUpdaterStatus(text, isError = false) {
+    const el = getUpdateEl('updateStatusText');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('text-red-500', isError);
+    el.classList.toggle('dark:text-red-400', isError);
+}
+
+function setUpdateActionsVisible(visible) {
+    const row = getUpdateEl('updateActionsRow');
+    if (row) row.classList.toggle('hidden', !visible);
+}
+
+function setUpdateProgress(percent) {
+    const container = getUpdateEl('updateProgressContainer');
+    const bar = getUpdateEl('updateProgressBar');
+    const pct = getUpdateEl('updateProgressPercent');
+    if (!container || !bar || !pct) return;
+    container.classList.remove('hidden');
+    bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    pct.textContent = `${Math.round(percent)}%`;
+}
+
+function hideUpdateProgress() {
+    const container = getUpdateEl('updateProgressContainer');
+    if (container) container.classList.add('hidden');
+}
+
+/**
+ * Renders release notes as plain text only - notes originate from a remote
+ * GitHub release and must never be interpreted as HTML (XSS surface).
+ */
+function renderWhatsNew(version, releaseNotes) {
+    const container = getUpdateEl('whatsNewContainer');
+    const versionEl = getUpdateEl('whatsNewVersion');
+    const contentEl = getUpdateEl('whatsNewContent');
+    if (!container || !contentEl) return;
+
+    let notesText = '';
+    if (typeof releaseNotes === 'string') {
+        notesText = releaseNotes;
+    } else if (releaseNotes && typeof releaseNotes === 'object') {
+        try { notesText = JSON.stringify(releaseNotes); } catch (e) { notesText = ''; }
+    }
+    // Strip any markup, then normalize whitespace/newlines for plain-text display
+    notesText = String(notesText)
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '- ')
+        .replace(/<[^>]*>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    if (!notesText && !version) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    if (versionEl) versionEl.textContent = version || '';
+    contentEl.textContent = notesText || `Version ${version} is available.`;
+    contentEl.classList.add('whitespace-pre-wrap');
+    container.classList.remove('hidden');
+}
+
+function resetUpdaterToIdle(statusText) {
+    setUpdateActionsVisible(false);
+    hideUpdateProgress();
+    const btn = getUpdateEl('checkForUpdatesBtn');
+    if (btn) {
+        btn.classList.remove('hidden');
+        btn.disabled = false;
+    }
+    setUpdaterCheckButton(UPDATER_IDLE_LABEL, false);
+    if (statusText !== undefined) setUpdaterStatus(statusText);
+}
+
+function handleUpdateMessage(status, payload) {
+    switch (status) {
+        case 'checking':
+            setUpdaterStatus('Checking for updates...');
+            setUpdaterCheckButton('Checking...', true);
+            break;
+
+        case 'available': {
+            const version = payload && payload.version ? String(payload.version) : '';
+            setUpdaterStatus(`Update ${version} is available. Download it now.`);
+            setUpdaterCheckButton(`Download Update ${version}`, false);
+            renderWhatsNew(version, payload ? payload.releaseNotes : '');
+            break;
+        }
+
+        case 'not-available':
+            resetUpdaterToIdle("You're running the latest version.");
+            break;
+
+        case 'dev':
+            resetUpdaterToIdle('Updates apply to installed builds only (dev mode detected).');
+            break;
+
+        case 'progress':
+            setUpdaterStatus('Downloading update...');
+            setUpdaterCheckButton('Downloading...', true);
+            setUpdateProgress(typeof payload === 'number' ? payload : 0);
+            break;
+
+        case 'downloaded': {
+            hideUpdateProgress();
+            const version = payload && payload.version ? String(payload.version) : '';
+            setUpdaterStatus(`Update ${version} downloaded and ready to install.`);
+            const checkBtn = getUpdateEl('checkForUpdatesBtn');
+            if (checkBtn) checkBtn.classList.add('hidden');
+            setUpdateActionsVisible(true);
+
+            const pathLabel = getUpdateEl('downloadedFilePathLabel');
+            if (pathLabel) {
+                const paths = (payload && Array.isArray(payload.filePaths)) ? payload.filePaths : [];
+                const firstPath = paths.find(Boolean) || '';
+                const baseName = firstPath ? firstPath.split(/[\\/]/).pop() : 'installer';
+                pathLabel.textContent = baseName;
+                if (firstPath) pathLabel.title = firstPath;
+            }
+            renderWhatsNew(version, payload ? payload.releaseNotes : '');
+            break;
+        }
+
+        case 'deleted':
+            resetUpdaterToIdle('Downloaded update file removed.');
+            if (typeof showToast === 'function') showToast('Downloaded update file deleted.', 'success');
+            break;
+
+        case 'error':
+            resetUpdaterToIdle(`Update check failed: ${payload || 'unknown error'}`, true);
+            break;
+
+        default:
+            // Unknown status - ignore silently
+            break;
+    }
+}
+
+function initializeUpdaterUI() {
+    if (!window.electronAPI || typeof window.electronAPI.onUpdateMessage !== 'function') return;
+
+    const checkBtn = getUpdateEl('checkForUpdatesBtn');
+    const installBtn = getUpdateEl('installUpdateBtn');
+    const openLocationBtn = getUpdateEl('openUpdateLocationBtn');
+    const deleteFileBtn = getUpdateEl('deleteUpdateFileBtn');
+
+    if (checkBtn) {
+        checkBtn.addEventListener('click', () => {
+            const text = getUpdateEl('updateBtnText');
+            if (text && /^Download Update/i.test(text.textContent || '')) {
+                window.electronAPI.downloadUpdate();
+            } else {
+                window.electronAPI.checkForUpdates();
+            }
+        });
+    }
+
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            const ok = typeof showConfirmDialog === 'function'
+                ? await showConfirmDialog({
+                    title: 'Install update?',
+                    message: 'The app will restart now to complete the installation.',
+                    confirmLabel: 'Restart & Install'
+                })
+                : true;
+            if (ok) {
+                window.electronAPI.installUpdate();
+            }
+        });
+    }
+
+    if (openLocationBtn) {
+        openLocationBtn.addEventListener('click', async () => {
+            try {
+                const opened = await window.electronAPI.openDownloadedUpdateLocation();
+                if (!opened && typeof showToast === 'function') {
+                    showToast('Downloaded installer not found on disk.', 'warning');
+                }
+            } catch (e) {
+                console.error('Open update location failed:', e);
+            }
+        });
+    }
+
+    if (deleteFileBtn) {
+        deleteFileBtn.addEventListener('click', async () => {
+            const ok = typeof showConfirmDialog === 'function'
+                ? await showConfirmDialog({
+                    title: 'Delete downloaded file?',
+                    message: 'The downloaded installer will be removed from disk without installing it.',
+                    confirmLabel: 'Delete File',
+                    danger: true
+                })
+                : true;
+            if (!ok) return;
+            try {
+                await window.electronAPI.deleteDownloadedUpdate();
+                // 'deleted' message drives the UI reset + toast
+            } catch (e) {
+                console.error('Delete downloaded update failed:', e);
+                if (typeof showToast === 'function') showToast('Failed to delete the downloaded file.', 'error');
+            }
+        });
+    }
+
+    window.electronAPI.onUpdateMessage(handleUpdateMessage);
+}
+
 function initializeSettingsUI() {
     setupSettingsTabs();
     setupDiagnosticListeners();
+    initializeUpdaterUI();
 
     const exportRulesBtn = document.getElementById('exportRulesBtn');
     const importRulesBtn = document.getElementById('importRulesBtn');
@@ -185,9 +338,8 @@ function initializeSettingsUI() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         setupSettingsTabs,
-        exportRulesConfig,
-        importRulesConfig,
         setupDiagnosticListeners,
+        initializeUpdaterUI,
         initializeSettingsUI
     };
 }

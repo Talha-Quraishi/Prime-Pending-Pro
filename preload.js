@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   downloadUpdate: () => ipcRenderer.send('download-update'),
   installUpdate: () => ipcRenderer.send('install-update'),
+  openDownloadedUpdateLocation: () => ipcRenderer.invoke('open-downloaded-update-location'),
+  deleteDownloadedUpdate: () => ipcRenderer.invoke('delete-downloaded-update'),
   onUpdateMessage: (callback) => {
     // Strip event from listener and pass arguments
     const subscription = (event, ...args) => callback(...args);

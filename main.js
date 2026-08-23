@@ -1,7 +1,14 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+
+// Prevent multiple instances from clobbering config.json / history index concurrently
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+const MAX_OPEN_FILE_BYTES = 250 * 1024 * 1024; // 250 MB sanity cap for selected files
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const historyDir = path.join(app.getPath('userData'), 'history');
@@ -10,6 +17,60 @@ const historyIndexPath = path.join(historyDir, 'index.json');
 // Ensure history directory exists
 if (!fs.existsSync(historyDir)) {
   fs.mkdirSync(historyDir, { recursive: true });
+}
+
+/**
+ * Writes a file atomically via temporary file + rename so crashes never leave corrupt JSON.
+ */
+async function atomicWriteFile(filePath, data) {
+  const tmpPath = `${filePath}.${Date.now()}.tmp`;
+  await fs.promises.writeFile(tmpPath, data);
+  try {
+    await fs.promises.rename(tmpPath, filePath);
+  } catch (e) {
+    await fs.promises.unlink(tmpPath).catch(() => {});
+    throw e;
+  }
+}
+
+// --- Remembered "open file" directory ---
+const REMEMBERED_DIR_KEY = 'lastOpenDirectory';
+let cachedOpenDir = null;
+
+function getExistingRememberedDir(dirValue) {
+  if (typeof dirValue !== 'string' || !dirValue) return null;
+  try {
+    return fs.statSync(dirValue).isDirectory() ? dirValue : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function loadRememberedDirFromConfig() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      ? getExistingRememberedDir(parsed[REMEMBERED_DIR_KEY])
+      : null;
+  } catch (e) {
+    return null; // Missing or corrupt config - fall back to OS default
+  }
+}
+
+async function persistRememberedDir(dir) {
+  try {
+    let config = {};
+    try {
+      config = JSON.parse(await fs.promises.readFile(configPath, 'utf8'));
+      if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};
+    } catch (e) {
+      config = {}; // Start fresh rather than failing the save
+    }
+    config[REMEMBERED_DIR_KEY] = dir;
+    await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
+  } catch (e) {
+    console.warn("Failed to persist last open directory:", e);
+  }
 }
 
 function isValidHistoryId(id) {
@@ -55,7 +116,7 @@ async function safeReadHistoryIndex() {
         }
       }
       recovered.sort((a, b) => new Date(b.date) - new Date(a.date));
-      await fs.promises.writeFile(historyIndexPath, JSON.stringify(recovered, null, 2), 'utf8').catch(() => {});
+      await atomicWriteFile(historyIndexPath, JSON.stringify(recovered, null, 2)).catch(() => {});
       return recovered;
     } catch (err) {
       return [];
@@ -74,7 +135,8 @@ ipcMain.handle('save-to-history', async (event, payload) => {
     }
 
     const sanitizedFilename = typeof filename === 'string' ? path.basename(filename).substring(0, 255) : 'file.xlsx';
-    const id = Date.now().toString();
+    // Random suffix prevents ID collisions when multiple saves happen in the same millisecond
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const filePath = getSafeHistoryPath(id);
     if (!filePath) {
       return { success: false, error: 'Failed to generate valid history path' };
@@ -114,7 +176,7 @@ ipcMain.handle('save-to-history', async (event, payload) => {
       }
     }
 
-    await fs.promises.writeFile(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    await atomicWriteFile(historyIndexPath, JSON.stringify(indexData, null, 2));
     return { success: true, record };
   } catch (e) {
     console.error("save-to-history error:", e);
@@ -173,7 +235,7 @@ ipcMain.handle('delete-from-history', async (event, id) => {
     try {
       let indexData = await safeReadHistoryIndex();
       indexData = indexData.filter(item => item.id !== id);
-      await fs.promises.writeFile(historyIndexPath, JSON.stringify(indexData, null, 2), 'utf8');
+      await atomicWriteFile(historyIndexPath, JSON.stringify(indexData, null, 2));
     } catch (e) {
       // Ignore index read/write issues
     }
@@ -199,7 +261,7 @@ ipcMain.handle('save-config', async (event, config) => {
     if (!config || typeof config !== 'object' || Array.isArray(config)) {
       return false;
     }
-    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+    await atomicWriteFile(configPath, JSON.stringify(config, null, 2));
     return true;
   } catch (e) {
     console.error("save-config error:", e);
@@ -209,13 +271,37 @@ ipcMain.handle('save-config', async (event, config) => {
 
 ipcMain.handle('select-file', async () => {
   try {
-    const result = await dialog.showOpenDialog({
+    // Remember the last used folder (session cache, then config.json for restarts)
+    if (!cachedOpenDir) {
+      cachedOpenDir = loadRememberedDirFromConfig();
+    }
+
+    const dialogOptions = {
       properties: ['openFile'],
       filters: [{ name: 'Excel Files', extensions: ['xlsx', 'xls', 'csv'] }]
-    });
+    };
+    if (cachedOpenDir) {
+      dialogOptions.defaultPath = cachedOpenDir;
+    }
+
+    const result = await dialog.showOpenDialog(dialogOptions);
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
     const filePath = result.filePaths[0];
-    const fileContent = fs.readFileSync(filePath);
+
+    // Store the picked file's folder as the new starting point next time
+    cachedOpenDir = path.dirname(filePath);
+    persistRememberedDir(cachedOpenDir);
+
+    const stat = await fs.promises.stat(filePath);
+    if (stat.size > MAX_OPEN_FILE_BYTES) {
+      dialog.showErrorBox(
+        'File too large',
+        `The selected file is ${(stat.size / (1024 * 1024)).toFixed(1)} MB. Maximum supported size is ${MAX_OPEN_FILE_BYTES / (1024 * 1024)} MB.`
+      );
+      return null;
+    }
+
+    const fileContent = await fs.promises.readFile(filePath);
     return {
       path: filePath,
       name: path.basename(filePath),
@@ -275,6 +361,11 @@ function createWindow() {
     }
   });
 
+  // Lock down navigation and popups (defense-in-depth against content injection)
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+  mainWindow.on('closed', () => { mainWindow = null; });
+
   // Remove default browser menu
   Menu.setApplicationMenu(null);
 
@@ -284,24 +375,34 @@ function createWindow() {
     mainWindow.maximize();
     mainWindow.show();
   });
+}
 
-  // IPC Event Handlers for Custom Window Controls
-  ipcMain.on('window-minimize', () => {
-    mainWindow.minimize();
-  });
+// IPC Event Handlers for Custom Window Controls (registered once, not per-window)
+ipcMain.on('window-minimize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+});
 
-  ipcMain.on('window-maximize', () => {
+ipcMain.on('window-maximize', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
     } else {
       mainWindow.maximize();
     }
-  });
+  }
+});
 
-  ipcMain.on('window-close', () => {
-    mainWindow.close();
-  });
-}
+ipcMain.on('window-close', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+});
+
+// Focus the existing window when a second launch attempt occurs
+app.on('second-instance', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();
@@ -318,50 +419,115 @@ app.on('window-all-closed', () => {
 // Auto-Updater Event Handlers and IPC bindings
 autoUpdater.autoDownload = false;
 
-autoUpdater.on('checking-for-update', () => {
+// Cached paths of the downloaded installer (filled when a download completes)
+let downloadedUpdateFiles = [];
+
+function sendUpdateMessage(status, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'checking');
+    mainWindow.webContents.send('update-message', status, payload);
   }
+}
+
+autoUpdater.on('checking-for-update', () => {
+  sendUpdateMessage('checking');
 });
 
 autoUpdater.on('update-available', (info) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'available', info);
-  }
+  sendUpdateMessage('available', info);
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'not-available');
-  }
+  sendUpdateMessage('not-available', info);
 });
 
 autoUpdater.on('error', (err) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'error', err == null ? 'unknown' : err.message);
-  }
+  console.error("autoUpdater error:", err);
+  sendUpdateMessage('error', err == null ? 'unknown' : err.message);
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'progress', progressObj.percent);
-  }
+  sendUpdateMessage('progress', progressObj.percent);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-message', 'downloaded');
-  }
+  // Capture the cached installer path(s) for "Open file location" / "Delete file" actions
+  const helperFile = autoUpdater.downloadedUpdateHelper && autoUpdater.downloadedUpdateHelper.file;
+  downloadedUpdateFiles = Array.isArray(helperFile) ? helperFile.filter(Boolean) : [helperFile].filter(Boolean);
+  sendUpdateMessage('downloaded', {
+    version: info && info.version,
+    releaseNotes: info && info.releaseNotes,
+    filePaths: downloadedUpdateFiles
+  });
 });
 
 ipcMain.on('check-for-updates', () => {
-  autoUpdater.checkForUpdatesAndNotify();
+  // electron-updater cannot check without an installed app context
+  if (!app.isPackaged) {
+    sendUpdateMessage('dev');
+    return;
+  }
+  autoUpdater.checkForUpdates().catch((e) => {
+    console.error("checkForUpdates failed:", e);
+  });
 });
 
 ipcMain.on('download-update', () => {
-  autoUpdater.downloadUpdate();
+  if (!app.isPackaged) return;
+  autoUpdater.downloadUpdate().then((files) => {
+    if (Array.isArray(files)) {
+      downloadedUpdateFiles = files.filter(Boolean);
+    }
+  }).catch((e) => {
+    console.error("downloadUpdate failed:", e);
+  });
 });
 
 ipcMain.on('install-update', () => {
+  if (!app.isPackaged) return;
   autoUpdater.quitAndInstall();
+});
+
+ipcMain.handle('open-downloaded-update-location', () => {
+  try {
+    const file = downloadedUpdateFiles.find(f => {
+      try { return f && fs.existsSync(f); } catch (e) { return false; }
+    });
+    if (!file) return false;
+    shell.showItemInFolder(file);
+    return true;
+  } catch (e) {
+    console.error("open-downloaded-update-location error:", e);
+    return false;
+  }
+});
+
+ipcMain.handle('delete-downloaded-update', async () => {
+  let deletedAny = false;
+  const targets = new Set();
+
+  // The installer plus its sibling .blockmap integrity file
+  for (const f of downloadedUpdateFiles) {
+    if (!f) continue;
+    targets.add(f);
+    if (f.toLowerCase().endsWith('.exe')) {
+      targets.add(f.slice(0, -4) + '.blockmap');
+    }
+  }
+
+  for (const target of targets) {
+    try {
+      await fs.promises.unlink(target);
+      deletedAny = true;
+    } catch (e) {
+      // Missing file is fine - still count as cleaned up
+      deletedAny = true;
+    }
+  }
+
+  downloadedUpdateFiles = [];
+  // Reset internal helper so a later re-check downloads fresh instead of trusting a deleted cache
+  try { autoUpdater.downloadedUpdateHelper = null; } catch (e) { /* ignore */ }
+
+  sendUpdateMessage('deleted');
+  return deletedAny;
 });
