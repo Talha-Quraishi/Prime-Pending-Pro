@@ -19,6 +19,35 @@ const TABLE_CHUNK_SIZE = 50;
 let currentFilterType = 'ALL';
 let currentDiscount = 0;
 let activePriceMode = 'MRP';
+let activeDrilldown = null; // { type: 'party'|'item'|'aging'|'type', value: string, label: string }
+
+function setDrilldownFilter(type, value, label) {
+    activeDrilldown = { type, value, label };
+    const banner = document.getElementById('drilldownBanner');
+    const labelEl = document.getElementById('drilldownLabel');
+    if (banner && labelEl) {
+        labelEl.textContent = label;
+        banner.classList.remove('hidden');
+    }
+    applyDashboardFilters(false);
+    const tableContainer = document.getElementById('dataTableContainer');
+    if (tableContainer) {
+        tableContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    if (typeof showToast === 'function') {
+        showToast(`Filtered by ${label}`, 'info', 1500);
+    }
+}
+
+function clearDrilldownFilter() {
+    activeDrilldown = null;
+    const banner = document.getElementById('drilldownBanner');
+    if (banner) banner.classList.add('hidden');
+    applyDashboardFilters(false);
+    if (typeof showToast === 'function') {
+        showToast('Drill-down filter cleared', 'info', 1200);
+    }
+}
 
 function setFilterType(type) {
     currentFilterType = type;
@@ -50,13 +79,39 @@ function applyDashboardFilters(immediateCharts = false) {
         if (query) {
             matchesSearch = row._searchStr && row._searchStr.includes(query);
         }
-        return matchesType && matchesSearch;
+
+        let matchesDrilldown = true;
+        if (activeDrilldown) {
+            if (activeDrilldown.type === 'party') {
+                matchesDrilldown = String(row['PARTY NAME'] || '').trim().toUpperCase() === String(activeDrilldown.value).trim().toUpperCase();
+            } else if (activeDrilldown.type === 'item') {
+                matchesDrilldown = String(row['ITEM NAME'] || '').trim().toUpperCase() === String(activeDrilldown.value).trim().toUpperCase();
+            } else if (activeDrilldown.type === 'aging') {
+                const parseDateFn = typeof parseDMY === 'function' ? parseDMY : (d) => new Date(d || 0);
+                const refDate = new Date();
+                refDate.setHours(0, 0, 0, 0);
+                const dObj = parseDateFn(row['DATE'] || '');
+                let diffDays = 0;
+                if (dObj && !isNaN(dObj.getTime()) && dObj.getTime() !== 0) {
+                    diffDays = Math.ceil(Math.abs(refDate - dObj) / (1000 * 60 * 60 * 24));
+                }
+                if (activeDrilldown.value === '0-30') matchesDrilldown = diffDays <= 30;
+                else if (activeDrilldown.value === '31-60') matchesDrilldown = diffDays > 30 && diffDays <= 60;
+                else if (activeDrilldown.value === '61-90') matchesDrilldown = diffDays > 60 && diffDays <= 90;
+                else if (activeDrilldown.value === '90+') matchesDrilldown = diffDays > 90;
+            } else if (activeDrilldown.type === 'type') {
+                if (activeDrilldown.value === 'DEL') matchesDrilldown = row._isDel;
+                else if (activeDrilldown.value === 'APR') matchesDrilldown = row._isApr;
+            }
+        }
+
+        return matchesType && matchesSearch && matchesDrilldown;
     });
     updateDashboardUI(currentFilteredData, immediateCharts);
 }
 
 /**
- * Pure aggregation of deduplicated rows into dashboard metrics.
+ * Pure aggregation of deduplicated rows into dashboard metrics including Pareto classification.
  * No DOM access - safe to unit test in Node.
  * @param {Array<Object>} data - Deduplicated pending order rows
  * @param {number} discountRate - Discount fraction applied to rate (0 - 1, e.g. 0.61)
@@ -80,6 +135,18 @@ function computeDashboardMetrics(data, discountRate = 0, today) {
         delCount: 0,
         aprCount: 0,
         agingBuckets: { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 },
+        paretoParties: [],
+        paretoSummary: {
+            catACount: 0,
+            catAVal: 0,
+            catAPct: 0,
+            catBCount: 0,
+            catBVal: 0,
+            catBPct: 0,
+            catCCount: 0,
+            catCVal: 0,
+            catCPct: 0
+        },
         tableRows: []
     };
 
@@ -135,6 +202,58 @@ function computeDashboardMetrics(data, discountRate = 0, today) {
 
     result.uniqueItems = [...uniqueItemsSet];
     result.uniqueParties = [...uniquePartiesSet];
+
+    // Pareto (80/20) Revenue Classification
+    const sortedPartiesArray = Object.entries(result.partiesValueMap)
+        .sort((a, b) => b[1] - a[1]);
+    
+    let runningVal = 0;
+    let catACount = 0, catAVal = 0;
+    let catBCount = 0, catBVal = 0;
+    let catCCount = 0, catCVal = 0;
+
+    for (let i = 0; i < sortedPartiesArray.length; i++) {
+        const [pName, pVal] = sortedPartiesArray[i];
+        runningVal += pVal;
+        const pctOfTotal = result.totalValue > 0 ? (pVal / result.totalValue) * 100 : 0;
+        const cumPct = result.totalValue > 0 ? (runningVal / result.totalValue) * 100 : 0;
+        
+        let category;
+        if (cumPct <= 80 || i === 0) {
+            category = 'A';
+            catACount++;
+            catAVal += pVal;
+        } else if (cumPct <= 95) {
+            category = 'B';
+            catBCount++;
+            catBVal += pVal;
+        } else {
+            category = 'C';
+            catCCount++;
+            catCVal += pVal;
+        }
+
+        result.paretoParties.push({
+            name: pName,
+            value: pVal,
+            pctOfTotal,
+            cumPct,
+            category
+        });
+    }
+
+    result.paretoSummary = {
+        catACount,
+        catAVal,
+        catAPct: result.totalValue > 0 ? (catAVal / result.totalValue) * 100 : 0,
+        catBCount,
+        catBVal,
+        catBPct: result.totalValue > 0 ? (catBVal / result.totalValue) * 100 : 0,
+        catCCount,
+        catCVal,
+        catCPct: result.totalValue > 0 ? (catCVal / result.totalValue) * 100 : 0
+    };
+
     return result;
 }
 
@@ -172,6 +291,7 @@ function updateDashboardUI(data, immediateCharts = false) {
     const dashTotalQtyDisplay = document.getElementById('dashTotalQtyDisplay');
     const dashUniqueItemsDisplay = document.getElementById('dashUniqueItemsDisplay');
     const dashUniquePartiesDisplay = document.getElementById('dashUniquePartiesDisplay');
+    const dashParetoDisplay = document.getElementById('dashParetoDisplay');
 
     const emptyState = document.getElementById('dashboardEmptyState');
     const dashSkeleton = document.getElementById('dashboardSkeletonState');
@@ -206,6 +326,7 @@ function updateDashboardUI(data, immediateCharts = false) {
             animateValue(dashTotalQtyDisplay, 0);
             animateValue(dashUniqueItemsDisplay, 0);
             animateValue(dashUniquePartiesDisplay, 0);
+            if (dashParetoDisplay) dashParetoDisplay.textContent = '0 Parties';
         }
         if (immediateCharts) {
             debouncedRenderCharts.cancel();
@@ -240,6 +361,10 @@ function updateDashboardUI(data, immediateCharts = false) {
         animateValue(dashTotalQtyDisplay, totalQty);
         animateValue(dashUniqueItemsDisplay, uniqueItems.size);
         animateValue(dashUniquePartiesDisplay, uniqueParties.size);
+    }
+    if (dashParetoDisplay) {
+        const catA = metrics.paretoSummary?.catACount || 0;
+        dashParetoDisplay.textContent = `${catA} Part${catA === 1 ? 'y' : 'ies'}`;
     }
 
     const sortedParties = Object.entries(partiesValueMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -313,6 +438,18 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onHover: (event, chartElement) => {
+                    if (event.native && event.native.target) {
+                        event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+                    }
+                },
+                onClick: (evt, elements) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const pName = fullPartyLabels[index] || parties[index]?.[0];
+                        if (pName) setDrilldownFilter('party', pName, `Party: ${pName}`);
+                    }
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -348,6 +485,18 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onHover: (event, chartElement) => {
+                    if (event.native && event.native.target) {
+                        event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+                    }
+                },
+                onClick: (evt, elements) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const iName = fullItemLabels[index] || items[index]?.[0];
+                        if (iName) setDrilldownFilter('item', iName, `Item: ${iName}`);
+                    }
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -418,6 +567,18 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '62%',
+                onHover: (event, chartElement) => {
+                    if (event.native && event.native.target) {
+                        event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+                    }
+                },
+                onClick: (evt, elements) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const type = index === 0 ? 'DEL' : (index === 1 ? 'APR' : null);
+                        if (type) setDrilldownFilter('type', type, `Order Type: ${type}`);
+                    }
+                },
                 plugins: {
                     legend: { position: 'right', labels: { color: textColor } },
                     tooltip: {
@@ -470,6 +631,19 @@ function renderCharts(parties, items, dates, trendCounts, delC, aprC, aging) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onHover: (event, chartElement) => {
+                    if (event.native && event.native.target) {
+                        event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+                    }
+                },
+                onClick: (evt, elements) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const bucketKeys = ['0-30', '31-60', '61-90', '90+'];
+                        const bucket = bucketKeys[index];
+                        if (bucket) setDrilldownFilter('aging', bucket, `Age: ${bucket} Days`);
+                    }
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -560,6 +734,300 @@ function updateChartsTheme() {
     });
 }
 
+/**
+ * Generates and downloads a multi-tab executive summary Excel workbook.
+ */
+async function exportExecutiveReport() {
+    if (typeof finalDeduplicatedData === 'undefined' || !finalDeduplicatedData || finalDeduplicatedData.length === 0) {
+        if (typeof showToast === 'function') showToast("No data to export. Please process a file first.", "warning");
+        return;
+    }
+
+    const btn = document.getElementById('exportExecutiveReportBtn');
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i><span>Generating...</span>`;
+    }
+
+    try {
+        const metrics = computeDashboardMetrics(finalDeduplicatedData, currentDiscount, new Date());
+        
+        if (typeof ExcelJS === 'undefined') {
+            throw new Error("ExcelJS engine is not loaded.");
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = "Prime Pending Pro";
+        workbook.lastModifiedBy = "Prime Pending Pro";
+        workbook.created = new Date();
+        workbook.modified = new Date();
+
+        // ----------------------------------------------------
+        // SHEET 1: EXECUTIVE SUMMARY
+        // ----------------------------------------------------
+        const wsSummary = workbook.addWorksheet('Executive Summary', {
+            views: [{ showGridLines: true }]
+        });
+
+        // Header Title
+        wsSummary.mergeCells('A1:F1');
+        const titleCell = wsSummary.getCell('A1');
+        titleCell.value = 'PRIME PENDING PRO - EXECUTIVE ORDER SUMMARY';
+        titleCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        wsSummary.getRow(1).height = 36;
+
+        // Subtitle
+        wsSummary.mergeCells('A2:F2');
+        const subCell = wsSummary.getCell('A2');
+        subCell.value = `Generated: ${new Date().toLocaleString()} | Valuation: ${activePriceMode === 'MRP' ? 'MRP (Gross)' : (currentDiscount * 100).toFixed(0) + '% Discounted'}`;
+        subCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF4B5563' } };
+        subCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        wsSummary.getRow(2).height = 20;
+
+        wsSummary.addRow([]); // Blank line
+
+        // KPI Highlights Header
+        const kpiHeaderRow = wsSummary.addRow(['KEY METRICS', 'VALUE']);
+        kpiHeaderRow.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        kpiHeaderRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+            cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        const kpis = [
+            ['Total Pending Value (₹)', metrics.totalValue],
+            ['Total Pending Quantity (Pcs)', metrics.totalQty],
+            ['Active Unique Parties', metrics.uniqueParties.length],
+            ['Unique Pending Items', metrics.uniqueItems.length],
+            ['Local Orders (DEL)', metrics.delCount],
+            ['Outstation Orders (APR)', metrics.aprCount]
+        ];
+
+        kpis.forEach(([k, v], idx) => {
+            const r = wsSummary.addRow([k, v]);
+            r.getCell(1).font = { bold: true };
+            if (idx === 0) {
+                r.getCell(2).numFmt = '₹#,##0.00';
+            } else if (idx === 1) {
+                r.getCell(2).numFmt = '#,##0';
+            }
+            r.eachCell(cell => {
+                cell.border = { top: { style: 'thin', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } }, left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+            });
+        });
+
+        wsSummary.addRow([]); // Blank line
+
+        // Aging Breakdown Section
+        const agingHeaderRow = wsSummary.addRow(['AGING BRACKET', 'ORDERS COUNT', 'EST. PERCENTAGE']);
+        agingHeaderRow.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        agingHeaderRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF475569' } };
+            cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        const totalOrders = finalDeduplicatedData.length || 1;
+        const agingData = [
+            ['0 - 30 Days (Fresh)', metrics.agingBuckets['0-30'], (metrics.agingBuckets['0-30'] / totalOrders)],
+            ['31 - 60 Days (Aging)', metrics.agingBuckets['31-60'], (metrics.agingBuckets['31-60'] / totalOrders)],
+            ['61 - 90 Days (Critical)', metrics.agingBuckets['61-90'], (metrics.agingBuckets['61-90'] / totalOrders)],
+            ['90+ Days (Overdue)', metrics.agingBuckets['90+'], (metrics.agingBuckets['90+'] / totalOrders)]
+        ];
+
+        agingData.forEach(([bracket, count, pct]) => {
+            const r = wsSummary.addRow([bracket, count, pct]);
+            r.getCell(3).numFmt = '0.0%';
+            r.eachCell(cell => {
+                cell.border = { top: { style: 'thin', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } }, left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+            });
+        });
+
+        wsSummary.addRow([]); // Blank line
+
+        // Pareto 80/20 Summary Section
+        const paretoHeaderRow = wsSummary.addRow(['PARETO CATEGORY', 'PARTY COUNT', 'PENDING VALUE', '% OF TOTAL']);
+        paretoHeaderRow.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        paretoHeaderRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+            cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        const paretoRows = [
+            ['Category A (Top 80% Key Accounts)', metrics.paretoSummary.catACount, metrics.paretoSummary.catAVal, metrics.paretoSummary.catAPct / 100],
+            ['Category B (Next 15% Steady Accounts)', metrics.paretoSummary.catBCount, metrics.paretoSummary.catBVal, metrics.paretoSummary.catBPct / 100],
+            ['Category C (Remaining 5% Tail Accounts)', metrics.paretoSummary.catCCount, metrics.paretoSummary.catCVal, metrics.paretoSummary.catCPct / 100]
+        ];
+
+        paretoRows.forEach(([cat, count, val, pct]) => {
+            const r = wsSummary.addRow([cat, count, val, pct]);
+            r.getCell(3).numFmt = '₹#,##0.00';
+            r.getCell(4).numFmt = '0.0%';
+            r.eachCell(cell => {
+                cell.border = { top: { style: 'thin', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } }, left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+            });
+        });
+
+        wsSummary.columns = [
+            { width: 38 },
+            { width: 22 },
+            { width: 22 },
+            { width: 18 },
+            { width: 15 },
+            { width: 15 }
+        ];
+
+        // ----------------------------------------------------
+        // SHEET 2: PARETO & TOP PARTIES
+        // ----------------------------------------------------
+        const wsPareto = workbook.addWorksheet('Pareto & Top Parties', {
+            views: [{ showGridLines: true, state: 'frozen', ySplit: 1 }]
+        });
+
+        const pHeader = wsPareto.addRow(['Rank', 'Party Name', 'Pending Value (₹)', '% of Total', 'Cumulative %', 'Category (A/B/C)']);
+        pHeader.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        pHeader.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        wsPareto.getRow(1).height = 26;
+
+        metrics.paretoParties.forEach((p, idx) => {
+            const r = wsPareto.addRow([
+                idx + 1,
+                p.name,
+                p.value,
+                p.pctOfTotal / 100,
+                p.cumPct / 100,
+                `Category ${p.category}`
+            ]);
+
+            r.getCell(1).alignment = { horizontal: 'center' };
+            r.getCell(3).numFmt = '₹#,##0.00';
+            r.getCell(4).numFmt = '0.0%';
+            r.getCell(5).numFmt = '0.0%';
+            r.getCell(6).alignment = { horizontal: 'center' };
+
+            // Subtle category styling
+            if (p.category === 'A') {
+                r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+                r.getCell(6).font = { bold: true, color: { argb: 'FF166534' } };
+            } else if (p.category === 'B') {
+                r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+                r.getCell(6).font = { bold: true, color: { argb: 'FF1E40AF' } };
+            }
+
+            r.eachCell(cell => {
+                cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            });
+        });
+
+        wsPareto.columns = [
+            { width: 8 },
+            { width: 42 },
+            { width: 22 },
+            { width: 14 },
+            { width: 16 },
+            { width: 18 }
+        ];
+
+        // ----------------------------------------------------
+        // SHEET 3: DETAILED ORDERS LIST
+        // ----------------------------------------------------
+        const wsOrders = workbook.addWorksheet('Pending Orders List', {
+            views: [{ showGridLines: true, state: 'frozen', ySplit: 1 }]
+        });
+
+        const oHeader = wsOrders.addRow(['Order No', 'Date', 'Age (Days)', 'Party Name', 'Item Name', 'Pending Qty', 'Rate (₹)', 'Pending Value (₹)']);
+        oHeader.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        oHeader.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        wsOrders.getRow(1).height = 26;
+
+        metrics.tableRows.forEach((item) => {
+            const unitRate = item.qty > 0 ? (item.val / item.qty) : 0;
+            const r = wsOrders.addRow([
+                item.orderNo,
+                item.dateRaw || '',
+                item.diffDays,
+                item.pName,
+                item.iName,
+                item.qty,
+                unitRate,
+                item.val
+            ]);
+
+            r.getCell(3).alignment = { horizontal: 'center' };
+            r.getCell(6).numFmt = '#,##0';
+            r.getCell(7).numFmt = '₹#,##0.00';
+            r.getCell(8).numFmt = '₹#,##0.00';
+
+            r.eachCell(cell => {
+                cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+            });
+        });
+
+        wsOrders.columns = [
+            { width: 18 },
+            { width: 14 },
+            { width: 12 },
+            { width: 38 },
+            { width: 38 },
+            { width: 14 },
+            { width: 14 },
+            { width: 18 }
+        ];
+
+        // Save File
+        const dateStr = new Date().toISOString().split('T')[0];
+        const defaultFilename = `Executive_Pending_Summary_${dateStr}.xlsx`;
+        const buffer = await workbook.xlsx.writeBuffer();
+
+        if (window.electronAPI && typeof window.electronAPI.saveFile === 'function') {
+            const result = await window.electronAPI.saveFile({
+                title: 'Save Executive Summary Report',
+                defaultPath: defaultFilename,
+                filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+                data: Array.from(new Uint8Array(buffer))
+            });
+
+            if (result && result.success) {
+                if (typeof showToast === 'function') {
+                    showToast(`Executive Report exported successfully! 📊`, 'success');
+                }
+            }
+        } else {
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = defaultFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            if (typeof showToast === 'function') {
+                showToast(`Executive Report downloaded! 📊`, 'success');
+            }
+        }
+    } catch (err) {
+        console.error("Export Executive Report failed:", err);
+        if (typeof showToast === 'function') {
+            showToast(`Export failed: ${err.message}`, 'error');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+}
+
 function setupDiscountListeners() {
     const btnMRP = document.getElementById('btnPriceMRP');
     const btn61 = document.getElementById('btnPrice61');
@@ -597,6 +1065,9 @@ function initializeDashboard() {
     const filterDel = document.getElementById('filterDel');
     const filterApr = document.getElementById('filterApr');
     const dataTableContainer = document.getElementById('dataTableContainer');
+    const exportExecBtn = document.getElementById('exportExecutiveReportBtn');
+    const clearDrilldownBtn = document.getElementById('clearDrilldownBtn');
+
     // Empty-state CTA: jump to the Process File view
     const dashGoProcessBtn = document.getElementById('dashGoProcessBtn');
     if (dashGoProcessBtn) {
@@ -609,6 +1080,9 @@ function initializeDashboard() {
     if (filterAll) filterAll.addEventListener('click', () => setFilterType('ALL'));
     if (filterDel) filterDel.addEventListener('click', () => setFilterType('DEL'));
     if (filterApr) filterApr.addEventListener('click', () => setFilterType('APR'));
+
+    if (exportExecBtn) exportExecBtn.addEventListener('click', exportExecutiveReport);
+    if (clearDrilldownBtn) clearDrilldownBtn.addEventListener('click', clearDrilldownFilter);
 
     if (dataTableContainer) {
         dataTableContainer.addEventListener('scroll', () => {
@@ -625,12 +1099,16 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         computeDashboardMetrics,
         setFilterType,
+        setDrilldownFilter,
+        clearDrilldownFilter,
         applyDashboardFilters,
         loadNextRowChunk,
         updateDashboardUI,
         renderCharts,
         updateChartsTheme,
+        exportExecutiveReport,
         setPriceMode,
         initializeDashboard
     };
 }
+

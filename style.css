@@ -1095,11 +1095,42 @@ html.low-spec *:not(.loader):not(.animate-spin):not(.bead):not(.bouncing-beads) 
     }
 }
 
+/* Modal Dialog Buttons & Action Classes */
+.modal-btn-confirm-danger,
+.bg-red-600 {
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+}
+.modal-btn-confirm-danger:hover,
+.bg-red-600:hover,
+.hover\:bg-red-700:hover {
+    background-color: #b91c1c !important;
+    color: #ffffff !important;
+}
+
+.modal-btn-confirm-primary,
+.bg-blue-600 {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+.modal-btn-confirm-primary:hover,
+.bg-blue-600:hover,
+.hover\:bg-blue-700:hover {
+    background-color: #1d4ed8 !important;
+    color: #ffffff !important;
+}
+
+.text-white {
+    color: #ffffff !important;
+}
+
 /* Low spec mode overrides for modal overlays */
 html.low-spec #shortcutOverlay,
-html.low-spec #dragDropOverlay {
+html.low-spec #dragDropOverlay,
+html.low-spec .modal-overlay {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     background-color: rgba(0, 0, 0, 0.75) !important;
 }
+
 

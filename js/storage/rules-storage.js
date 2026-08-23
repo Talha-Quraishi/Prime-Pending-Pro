@@ -180,9 +180,117 @@ async function saveRulesToStorage(rulesConfig) {
     return success;
 }
 
+/**
+ * Merges incoming rules into existing rules without clobbering non-overlapping parties.
+ * Incoming rules override conflicting party rules.
+ * @param {Object} existing - Current rules object
+ * @param {Object} incoming - New rules object to merge in
+ * @returns {Object} Validated merged rules object
+ */
+function mergeRulesData(existing, incoming) {
+    const base = migrateRulesData(existing);
+    const inc = migrateRulesData(incoming);
+
+    // Build party-to-rule map from base
+    const partyMap = {};
+    base.excludedParties.forEach(p => { partyMap[p] = 'keep-all'; });
+    base.deduplicateParties.forEach(p => { partyMap[p] = 'keep-latest'; });
+    base.specialParties.forEach(p => { partyMap[p] = 'marka'; });
+    base.fullyExcludedParties.forEach(p => { partyMap[p] = 'exclude'; });
+
+    // Apply incoming rule overrides
+    inc.excludedParties.forEach(p => { partyMap[p] = 'keep-all'; });
+    inc.deduplicateParties.forEach(p => { partyMap[p] = 'keep-latest'; });
+    inc.specialParties.forEach(p => { partyMap[p] = 'marka'; });
+    inc.fullyExcludedParties.forEach(p => { partyMap[p] = 'exclude'; });
+
+    // Reconstruct lists
+    const mergedExcluded = [];
+    const mergedLatest = [];
+    const mergedMarka = [];
+    const mergedFullyExcluded = [];
+
+    for (const [party, rule] of Object.entries(partyMap)) {
+        if (rule === 'keep-all') mergedExcluded.push(party);
+        else if (rule === 'keep-latest') mergedLatest.push(party);
+        else if (rule === 'marka') mergedMarka.push(party);
+        else if (rule === 'exclude') mergedFullyExcluded.push(party);
+    }
+
+    // Merge partyMerges
+    const mergedMerges = Object.assign({}, base.partyMerges, inc.partyMerges);
+
+    // Merge month selections (union unique months per party)
+    const mergedMonths = Object.assign({}, base.partyMonthSelections);
+    for (const [party, months] of Object.entries(inc.partyMonthSelections)) {
+        if (mergedMonths[party]) {
+            const combined = Array.from(new Set([...mergedMonths[party], ...months])).sort();
+            mergedMonths[party] = combined;
+        } else {
+            mergedMonths[party] = [...months];
+        }
+    }
+
+    return migrateRulesData({
+        rulesVersion: RULES_STORAGE_VERSION,
+        excludedParties: mergedExcluded,
+        deduplicateParties: mergedLatest,
+        specialParties: mergedMarka,
+        fullyExcludedParties: mergedFullyExcluded,
+        partyMerges: mergedMerges,
+        partyMonthSelections: mergedMonths
+    });
+}
+
+/**
+ * Creates a structured, exportable profile bundle with summary stats and metadata.
+ * @param {Object} rulesState 
+ * @param {Object} [metadata]
+ * @returns {Object}
+ */
+function createRulesProfile(rulesState, metadata = {}) {
+    const clean = migrateRulesData(rulesState || _inMemoryRulesState);
+    const configuredParties = new Set([
+        ...clean.excludedParties,
+        ...clean.deduplicateParties,
+        ...clean.specialParties,
+        ...clean.fullyExcludedParties,
+        ...Object.keys(clean.partyMonthSelections)
+    ]);
+
+    return {
+        schema: "prime-pending-pro-rules-profile",
+        profileVersion: 1,
+        rulesVersion: RULES_STORAGE_VERSION,
+        exportedAt: new Date().toISOString(),
+        profileName: metadata.name || "Default Profile",
+        description: metadata.description || "Exported custom party rules & month selections",
+        appVersion: metadata.appVersion || (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.appVersion ? window.electronAPI.appVersion : "3.30.22"),
+        summary: {
+            totalConfiguredParties: configuredParties.size,
+            keepAllCount: clean.excludedParties.length,
+            latestDateCount: clean.deduplicateParties.length,
+            markaCount: clean.specialParties.length,
+            fullyExcludedCount: clean.fullyExcludedParties.length,
+            monthSelectionsCount: Object.keys(clean.partyMonthSelections).length,
+            mergesCount: Object.keys(clean.partyMerges).length
+        },
+        rules: {
+            excludedParties: clean.excludedParties,
+            deduplicateParties: clean.deduplicateParties,
+            specialParties: clean.specialParties,
+            fullyExcludedParties: clean.fullyExcludedParties,
+            partyMerges: clean.partyMerges,
+            partyMonthSelections: clean.partyMonthSelections
+        }
+    };
+}
+
 if (typeof self !== 'undefined') {
     self.RULES_STORAGE_VERSION = RULES_STORAGE_VERSION;
     self.migrateRulesData = migrateRulesData;
+    self.mergeRulesData = mergeRulesData;
+    self.createRulesProfile = createRulesProfile;
     self.getRulesState = getRulesState;
     self.setRulesState = setRulesState;
     self.loadRulesFromStorage = loadRulesFromStorage;
@@ -193,9 +301,12 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         RULES_STORAGE_VERSION,
         migrateRulesData,
+        mergeRulesData,
+        createRulesProfile,
         getRulesState,
         setRulesState,
         loadRulesFromStorage,
         saveRulesToStorage
     };
 }
+

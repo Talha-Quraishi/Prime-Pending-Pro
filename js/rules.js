@@ -213,9 +213,7 @@ function setupChipInputListeners() {
 
 function exportRulesConfig() {
     try {
-        const configData = {
-            version: (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev',
-            timestamp: new Date().toISOString(),
+        const currentRules = {
             excludedParties: excludedParties || [],
             deduplicateParties: deduplicateParties || [],
             specialParties: specialParties || [],
@@ -223,17 +221,29 @@ function exportRulesConfig() {
             partyMerges: partyMerges || {},
             partyMonthSelections: partyMonthSelections || {}
         };
-        const jsonStr = JSON.stringify(configData, null, 2);
+        
+        const profileData = typeof createRulesProfile === 'function'
+            ? createRulesProfile(currentRules, { name: "Prime Pending Pro Rules Profile" })
+            : {
+                version: (window.electronAPI && window.electronAPI.appVersion) ? window.electronAPI.appVersion : 'dev',
+                timestamp: new Date().toISOString(),
+                ...currentRules
+            };
+
+        const jsonStr = JSON.stringify(profileData, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `pending_order_maker_rules_${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `prime_pending_rules_profile_${new Date().toISOString().split('T')[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast("Rules exported successfully!", 'success');
+        
+        const totalCount = (profileData.summary && profileData.summary.totalConfiguredParties) ||
+            (currentRules.excludedParties.length + currentRules.deduplicateParties.length + currentRules.specialParties.length + currentRules.fullyExcludedParties.length);
+        showToast(`Rules Profile exported (${totalCount} configured parties)! 💾`, 'success');
     } catch (err) {
         showToast("Failed to export rules: " + err.message, 'error');
     }
@@ -249,37 +259,84 @@ function importRulesConfig(event) {
             const rawParsed = JSON.parse(e.target.result);
             if (!rawParsed) throw new Error("File content is empty or invalid JSON.");
 
-            const migrationFn = typeof migrateRulesData === 'function' ? migrateRulesData : (d => d);
-            const parsed = migrationFn(rawParsed);
+            // Extract rules whether from new profile schema or legacy flat format
+            const incomingRaw = (rawParsed.schema === "prime-pending-pro-rules-profile" && rawParsed.rules)
+                ? rawParsed.rules
+                : rawParsed;
 
-            // Update memory state with uppercase normalization
-            excludedParties = parsed.excludedParties || [];
-            deduplicateParties = parsed.deduplicateParties || [];
-            specialParties = parsed.specialParties || [];
-            fullyExcludedParties = parsed.fullyExcludedParties || [];
-            partyMerges = parsed.partyMerges || {};
-            partyMonthSelections = parsed.partyMonthSelections || {};
+            const migrationFn = typeof migrateRulesData === 'function' ? migrateRulesData : (d => d);
+            const incomingValidated = migrationFn(incomingRaw);
+
+            const currentRules = {
+                excludedParties: excludedParties || [],
+                deduplicateParties: deduplicateParties || [],
+                specialParties: specialParties || [],
+                fullyExcludedParties: fullyExcludedParties || [],
+                partyMerges: partyMerges || {},
+                partyMonthSelections: partyMonthSelections || {}
+            };
+
+            const hasExistingRules = (
+                currentRules.excludedParties.length > 0 ||
+                currentRules.deduplicateParties.length > 0 ||
+                currentRules.specialParties.length > 0 ||
+                currentRules.fullyExcludedParties.length > 0 ||
+                Object.keys(currentRules.partyMonthSelections).length > 0
+            );
+
+            let finalRules = incomingValidated;
+
+            if (hasExistingRules && typeof showConfirmDialog === 'function') {
+                const shouldMerge = await showConfirmDialog({
+                    title: 'Import Rules Profile',
+                    message: 'How would you like to import this profile?\n\n• MERGE: Combines with your current rules without deleting existing configured parties.\n• REPLACE: Overwrites your current rules completely with the imported file.',
+                    confirmLabel: 'Merge with Existing',
+                    cancelLabel: 'Replace All'
+                });
+
+                if (shouldMerge) {
+                    finalRules = typeof mergeRulesData === 'function'
+                        ? mergeRulesData(currentRules, incomingValidated)
+                        : incomingValidated;
+                }
+            }
+
+            // Update in-memory state with normalized rules
+            excludedParties = finalRules.excludedParties || [];
+            deduplicateParties = finalRules.deduplicateParties || [];
+            specialParties = finalRules.specialParties || [];
+            fullyExcludedParties = finalRules.fullyExcludedParties || [];
+            partyMerges = finalRules.partyMerges || {};
+            partyMonthSelections = finalRules.partyMonthSelections || {};
 
             // Sync to partyRulesMap
             partyRulesMap = {};
-            excludedParties.forEach(p => partyRulesMap[p] = 'keep-all');
-            deduplicateParties.forEach(p => partyRulesMap[p] = 'keep-latest');
-            specialParties.forEach(p => partyRulesMap[p] = 'marka');
-            fullyExcludedParties.forEach(p => partyRulesMap[p] = 'exclude');
+            excludedParties.forEach(p => { partyRulesMap[p] = 'keep-all'; });
+            deduplicateParties.forEach(p => { partyRulesMap[p] = 'keep-latest'; });
+            specialParties.forEach(p => { partyRulesMap[p] = 'marka'; });
+            fullyExcludedParties.forEach(p => { partyRulesMap[p] = 'exclude'; });
 
             // Render visual chips
             renderChipsInUI();
 
             // Re-render UI list & spelling corrections
             renderPartyRulesList();
-            if (transformedData && transformedData.length > 0) {
+            if (typeof transformedData !== 'undefined' && transformedData && transformedData.length > 0) {
                 triggerReDeduplication();
             }
 
             // Save to persistent storage automatically
             await persistRulesToStorage(true);
 
-            showToast("Rules imported and saved successfully!", 'success');
+            const totalParties = new Set([
+                ...excludedParties,
+                ...deduplicateParties,
+                ...specialParties,
+                ...fullyExcludedParties,
+                ...Object.keys(partyMonthSelections)
+            ]).size;
+
+            showToast(`Rules Profile imported successfully (${totalParties} active rules)! ✅`, 'success');
         } catch (err) {
             showToast("Failed to import rules: " + err.message, 'error');
         } finally {

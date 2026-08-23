@@ -340,6 +340,11 @@
                                 </div>
                                 <input type="number" id="inputPriceCustom" min="0" max="100" class="hidden w-12 p-1 text-xs border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white text-center" placeholder="%">
                             </div>
+
+                            <button id="exportExecutiveReportBtn" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1.5 px-3 rounded shadow-sm transition-all focus:outline-none">
+                                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+                                <span>Executive Report</span>
+                            </button>
                         </div>
                     </div>
 
@@ -360,7 +365,8 @@
                         <!-- Dashboard Skeleton State -->
                         <div id="dashboardSkeletonState" class="hidden space-y-6">
                             <!-- Stat counters skeleton -->
-                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div class="ms-card p-4 flex flex-col items-center gap-2 h-20 skeleton opacity-50"></div>
                                 <div class="ms-card p-4 flex flex-col items-center gap-2 h-20 skeleton opacity-50"></div>
                                 <div class="ms-card p-4 flex flex-col items-center gap-2 h-20 skeleton opacity-50"></div>
                                 <div class="ms-card p-4 flex flex-col items-center gap-2 h-20 skeleton opacity-50"></div>
@@ -379,7 +385,7 @@
                         <!-- Dashboard Content (dynamic visibility) -->
                         <div id="dashboardContent" class="hidden space-y-6">
                             <!-- Stat counters -->
-                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                                 <div class="ms-card springy-hover p-4 text-center">
                                     <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashTotalValue">Total Pending Value</span>
                                     <span id="dashTotalValueDisplay" class="block text-2xl font-bold text-green-600 dark:text-green-400 mt-1">₹0</span>
@@ -395,6 +401,10 @@
                                 <div class="ms-card springy-hover p-4 text-center">
                                     <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider" data-lang-key="dashUniqueParties">Active Parties</span>
                                     <span id="dashUniquePartiesDisplay" class="block text-2xl font-bold text-orange-600 dark:text-orange-400 mt-1">0</span>
+                                </div>
+                                <div class="ms-card springy-hover p-4 text-center col-span-2 lg:col-span-1">
+                                    <span class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Top 80% (Cat A)</span>
+                                    <span id="dashParetoDisplay" class="block text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">0 Parties</span>
                                 </div>
                             </div>
 
@@ -443,7 +453,24 @@
 
                             <!-- Orders table card -->
                             <div class="ms-card springy-hover p-5">
-                                <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-3 uppercase tracking-wider" data-lang-key="tableTitle">Detailed Order List</h4>
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider" data-lang-key="tableTitle">Detailed Order List</h4>
+                                    <span class="text-[11px] text-gray-400 dark:text-gray-500">Tip: Click charts above to drill down</span>
+                                </div>
+
+                                <!-- Active Drill-Down Banner -->
+                                <div id="drilldownBanner" class="hidden flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg px-3.5 py-2 mb-3 text-xs">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="filter" class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400"></i>
+                                        <span class="text-gray-600 dark:text-gray-300">Active Chart Filter:</span>
+                                        <span id="drilldownLabel" class="font-bold text-blue-700 dark:text-blue-300"></span>
+                                    </div>
+                                    <button id="clearDrilldownBtn" type="button" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 font-semibold flex items-center gap-1 transition-colors">
+                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        <span>Clear Filter</span>
+                                    </button>
+                                </div>
+
                                 <div id="dataTableContainer" class="data-table-container custom-scrollbar max-h-80 border border-gray-200/50 dark:border-gray-800 rounded">
                                     <table class="w-full text-xs text-left text-gray-500 dark:text-gray-400 data-table table-fixed">
                                         <thead class="text-[11px] text-gray-700 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-800">
@@ -595,6 +622,48 @@
                                         <input type="file" id="importRulesInput" class="hidden" accept=".json">
                                     </div>
                                 </div>
+
+                                <!-- Storage & History Retention Manager -->
+                                <div class="ms-card springy-hover p-5 flex flex-col gap-4">
+                                    <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-2">
+                                        <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider flex items-center gap-2">
+                                            <i data-lucide="hard-drive" class="w-4 h-4 text-blue-500"></i> Storage &amp; History Manager
+                                        </h3>
+                                        <span id="storageStatsBadge" class="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded font-mono font-semibold">0 files · 0 KB</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                                        Manage local disk storage for historical processed Excel files. Set automatic retention policies or clean up older exports.
+                                    </p>
+
+                                    <!-- Retention Policy Selection -->
+                                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 py-1">
+                                        <div>
+                                            <h4 class="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">Auto-Purge Policy</h4>
+                                            <p class="text-[11px] text-gray-400 dark:text-gray-500">Automatically prune older files on startup</p>
+                                        </div>
+                                        <select id="historyRetentionSelect" class="text-xs p-1.5 border border-gray-300 dark:border-neutral-800 rounded bg-white dark:bg-[#1b1b1b] dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                            <option value="0">Keep Indefinitely (No auto-purge)</option>
+                                            <option value="30">Keep last 30 days</option>
+                                            <option value="60">Keep last 60 days</option>
+                                            <option value="90">Keep last 90 days</option>
+                                            <option value="max25">Keep newest 25 files only</option>
+                                            <option value="max50">Keep newest 50 files only</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Storage Action Buttons -->
+                                    <div class="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-neutral-800/50">
+                                        <button id="purgeHistoryBtn" type="button" class="flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-gray-800 dark:text-gray-200 font-semibold py-2 px-3 rounded text-xs border border-gray-200/50 dark:border-gray-800/50 transition-all focus:outline-none">
+                                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-blue-500"></i>
+                                            <span>Purge Old History</span>
+                                        </button>
+                                        <button id="clearAllHistoryBtn" type="button" class="flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 font-semibold py-2 px-3 rounded text-xs border border-red-200 dark:border-red-800/50 transition-all focus:outline-none">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                            <span>Clear All History</span>
+                                        </button>
+                                    </div>
+                                </div>
+
 
                                 <!-- Software Updates -->
                                 <div class="ms-card springy-hover p-5 flex flex-col gap-4">

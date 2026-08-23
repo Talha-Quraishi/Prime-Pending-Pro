@@ -20,6 +20,10 @@ function setupSettingsTabs() {
                     pane.classList.add('hidden');
                 }
             });
+
+            if (tabName === 'updates' && typeof refreshStorageStats === 'function') {
+                refreshStorageStats();
+            }
         });
     });
 }
@@ -297,10 +301,141 @@ function initializeUpdaterUI() {
     window.electronAPI.onUpdateMessage(handleUpdateMessage);
 }
 
+async function refreshStorageStats() {
+    const badge = document.getElementById('storageStatsBadge');
+    if (!badge || !window.electronAPI || typeof window.electronAPI.getStorageStats !== 'function') return;
+
+    try {
+        const stats = await window.electronAPI.getStorageStats();
+        if (stats && stats.success) {
+            const sizeFormatted = typeof formatFileSize === 'function' ? formatFileSize(stats.totalBytes) : `${Math.round(stats.totalBytes / 1024)} KB`;
+            badge.textContent = `${stats.fileCount} file${stats.fileCount === 1 ? '' : 's'} · ${sizeFormatted}`;
+        }
+    } catch (e) {
+        console.warn("refreshStorageStats error:", e);
+    }
+}
+
+async function initializeStorageManagerUI() {
+    const retentionSelect = document.getElementById('historyRetentionSelect');
+    const purgeBtn = document.getElementById('purgeHistoryBtn');
+    const clearAllBtn = document.getElementById('clearAllHistoryBtn');
+
+    if (!window.electronAPI) return;
+
+    // Load saved retention preference
+    if (retentionSelect) {
+        try {
+            const config = (await window.electronAPI.loadConfig()) || {};
+            if (config.historyRetentionPolicy) {
+                retentionSelect.value = config.historyRetentionPolicy;
+            }
+        } catch (e) {}
+
+        retentionSelect.addEventListener('change', async () => {
+            const val = retentionSelect.value;
+            if (typeof persistConfigValue === 'function') {
+                persistConfigValue('historyRetentionPolicy', val);
+                if (val.startsWith('max')) {
+                    persistConfigValue('historyRetentionMaxItems', parseInt(val.replace('max', ''), 10));
+                    persistConfigValue('historyRetentionDays', 0);
+                } else {
+                    persistConfigValue('historyRetentionDays', parseInt(val, 10));
+                    persistConfigValue('historyRetentionMaxItems', 0);
+                }
+            }
+            if (typeof showToast === 'function') {
+                showToast(`Auto-purge policy updated! ⚙️`, 'info', 2000);
+            }
+        });
+    }
+
+    if (purgeBtn) {
+        purgeBtn.addEventListener('click', async () => {
+            const policy = retentionSelect ? retentionSelect.value : '30';
+            let options;
+            let desc;
+
+            if (policy.startsWith('max')) {
+                const max = parseInt(policy.replace('max', ''), 10);
+                options = { maxItems: max };
+                desc = `older than the newest ${max} records`;
+            } else {
+                const days = parseInt(policy, 10) || 30;
+                options = { olderThanDays: days };
+                desc = `older than ${days} days`;
+            }
+
+            const ok = typeof showConfirmDialog === 'function'
+                ? await showConfirmDialog({
+                    title: 'Purge Old History?',
+                    message: `This will permanently delete historical Excel files ${desc} from your storage disk.\n\nAre you sure you want to proceed?`,
+                    confirmLabel: 'Purge Files'
+                })
+                : true;
+
+            if (!ok) return;
+
+            try {
+                const res = await window.electronAPI.purgeHistory(options);
+                if (res && res.success) {
+                    const freed = typeof formatFileSize === 'function' ? formatFileSize(res.freedBytes) : `${Math.round(res.freedBytes / 1024)} KB`;
+                    if (typeof showToast === 'function') {
+                        showToast(`Purged ${res.deletedCount} file(s), freed ${freed}! 🧹`, 'success');
+                    }
+                    await refreshStorageStats();
+                    if (typeof loadHistoryUI === 'function') {
+                        loadHistoryUI();
+                    }
+                } else {
+                    if (typeof showToast === 'function') {
+                        showToast(`Purge failed: ${res?.error || 'Unknown error'}`, 'error');
+                    }
+                }
+            } catch (err) {
+                console.error("Purge error:", err);
+            }
+        });
+    }
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', async () => {
+            const ok = typeof showConfirmDialog === 'function'
+                ? await showConfirmDialog({
+                    title: 'Clear Entire History?',
+                    message: 'CAUTION: This will permanently delete ALL historical processed Excel files and reset your history list to empty.\n\nThis action cannot be undone.',
+                    confirmLabel: 'Clear All History',
+                    danger: true
+                })
+                : true;
+
+            if (!ok) return;
+
+            try {
+                const res = await window.electronAPI.purgeHistory({ purgeAll: true });
+                if (res && res.success) {
+                    if (typeof showToast === 'function') {
+                        showToast(`All history cleared (${res.deletedCount} files deleted).`, 'info');
+                    }
+                    await refreshStorageStats();
+                    if (typeof loadHistoryUI === 'function') {
+                        loadHistoryUI();
+                    }
+                }
+            } catch (err) {
+                console.error("Clear all history error:", err);
+            }
+        });
+    }
+
+    refreshStorageStats();
+}
+
 function initializeSettingsUI() {
     setupSettingsTabs();
     setupDiagnosticListeners();
     initializeUpdaterUI();
+    initializeStorageManagerUI();
 
     const exportRulesBtn = document.getElementById('exportRulesBtn');
     const importRulesBtn = document.getElementById('importRulesBtn');
@@ -340,6 +475,8 @@ if (typeof module !== 'undefined' && module.exports) {
         setupSettingsTabs,
         setupDiagnosticListeners,
         initializeUpdaterUI,
+        initializeStorageManagerUI,
+        refreshStorageStats,
         initializeSettingsUI
     };
 }

@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadHistoryList: () => ipcRenderer.invoke('load-history-list'),
   loadHistoricalFile: (id) => ipcRenderer.invoke('load-historical-file', id),
   deleteFromHistory: (id) => ipcRenderer.invoke('delete-from-history', id),
+  getStorageStats: () => ipcRenderer.invoke('get-storage-stats'),
+  purgeHistory: (options) => ipcRenderer.invoke('purge-history', options),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   downloadUpdate: () => ipcRenderer.send('download-update'),
   installUpdate: () => ipcRenderer.send('install-update'),
