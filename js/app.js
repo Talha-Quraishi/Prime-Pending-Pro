@@ -122,7 +122,13 @@ function processFile() {
     if (messageText) messageText.textContent = '';
     if (showErrorLink) showErrorLink.classList.add('hidden');
     if (detailedError) detailedError.classList.add('hidden');
-    if (progressBar) progressBar.style.width = '0%';
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        // Force reflow so the browser establishes 0% as the computed starting
+        // value — without this the display:none→visible transition can batch
+        // the 0→N% update into one frame, skipping the animation entirely.
+        void progressBar.offsetWidth;
+    }
     processingStartTime = Date.now();
 
     const dashSkeleton = document.getElementById('dashboardSkeletonState');
