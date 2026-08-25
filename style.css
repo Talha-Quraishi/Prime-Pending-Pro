@@ -859,7 +859,8 @@ html.low-spec *:not(.loader):not(.animate-spin):not(.bead):not(.bouncing-beads) 
 #progressBar, #updateProgressBar {
     position: relative;
     overflow: hidden;
-    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    will-change: width;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 #progressBar::after, #updateProgressBar::after {
     content: '';
