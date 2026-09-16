@@ -8,7 +8,9 @@
     "start": "electron .",
     "test": "node tests/test_runner.js",
     "lint": "eslint .",
-    "dist": "electron-builder --windows"
+    "dist": "electron-builder --windows",
+    "dist:portable": "electron-builder --windows portable",
+    "dist:installer": "electron-builder --windows nsis"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -52,6 +54,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "Prime-Pending-Pro-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Prime-Pending-Pro-Portable-${version}.${ext}"
     },
     "publish": [
       {

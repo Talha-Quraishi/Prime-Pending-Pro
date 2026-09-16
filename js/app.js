@@ -181,6 +181,8 @@ function processFile() {
                 setTimeout(() => {
                     if (processingContainer) processingContainer.classList.add('hidden');
                     if (uploadContainer) uploadContainer.classList.add('hidden');
+                    const dropzoneCard = document.getElementById('dropzoneCard');
+                    if (dropzoneCard) dropzoneCard.classList.add('hidden');
                     if (downloadContainer) {
                         downloadContainer.classList.remove('hidden');
                         downloadContainer.classList.add('fade-in');
@@ -279,6 +281,10 @@ function resetUI() {
     if (detailedError) detailedError.classList.add('hidden');
     
     if (uploadContainer) uploadContainer.classList.remove('hidden');
+    const dropzoneCard = document.getElementById('dropzoneCard');
+    if (dropzoneCard) dropzoneCard.classList.remove('hidden');
+    const changeFileBtn = document.getElementById('changeFileBtn');
+    if (changeFileBtn) changeFileBtn.classList.add('hidden');
     if (transformButton) {
         transformButton.classList.remove('hidden');
         transformButton.disabled = true;

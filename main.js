@@ -19,17 +19,52 @@ if (!fs.existsSync(historyDir)) {
   fs.mkdirSync(historyDir, { recursive: true });
 }
 
+// Mutex map to serialize concurrent writes to the same destination path
+const fileWriteQueues = new Map();
+
 /**
- * Writes a file atomically via temporary file + rename so crashes never leave corrupt JSON.
+ * Writes a file atomically via unique temporary file + rename with Windows-safe retry and serialization.
  */
 async function atomicWriteFile(filePath, data) {
-  const tmpPath = `${filePath}.${Date.now()}.tmp`;
-  await fs.promises.writeFile(tmpPath, data);
+  const prevPromise = fileWriteQueues.get(filePath) || Promise.resolve();
+  const writePromise = (async () => {
+    await prevPromise.catch(() => {});
+    const uniqueSuffix = `${Date.now()}_${process.pid}_${Math.random().toString(36).slice(2, 8)}`;
+    const tmpPath = `${filePath}.${uniqueSuffix}.tmp`;
+    
+    await fs.promises.writeFile(tmpPath, data, 'utf8');
+    
+    // Windows rename can briefly throw EPERM/EBUSY if the destination is being indexed or replaced
+    let renamed = false;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await fs.promises.rename(tmpPath, filePath);
+        renamed = true;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (e.code === 'EPERM' || e.code === 'EBUSY' || e.code === 'EACCES') {
+          await new Promise(r => setTimeout(r, 20 * (attempt + 1)));
+        } else {
+          break;
+        }
+      }
+    }
+    
+    if (!renamed) {
+      await fs.promises.unlink(tmpPath).catch(() => {});
+      throw lastErr;
+    }
+  })();
+
+  fileWriteQueues.set(filePath, writePromise);
   try {
-    await fs.promises.rename(tmpPath, filePath);
-  } catch (e) {
-    await fs.promises.unlink(tmpPath).catch(() => {});
-    throw e;
+    await writePromise;
+  } finally {
+    if (fileWriteQueues.get(filePath) === writePromise) {
+      fileWriteQueues.delete(filePath);
+    }
   }
 }
 

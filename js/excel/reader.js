@@ -54,6 +54,12 @@ function handleFile(file) {
         if (detailedError) detailedError.classList.add('hidden');
         if (fileInput) fileInput.file = file;
 
+        // Hide upload dropzone card once file is uploaded
+        const dropzoneCard = document.getElementById('dropzoneCard');
+        if (dropzoneCard) dropzoneCard.classList.add('hidden');
+        const changeFileBtn = document.getElementById('changeFileBtn');
+        if (changeFileBtn) changeFileBtn.classList.remove('hidden');
+
         // Show metadata preview
         const previewEmptyState = document.getElementById('previewEmptyState');
         const fileStatsContainer = document.getElementById('fileStatsContainer');
@@ -273,7 +279,16 @@ function initializeDragAndDrop() {
         });
     }
 
-    // Empty-state CTA in the file preview card
+    const changeFileBtn = document.getElementById('changeFileBtn');
+    if (changeFileBtn) {
+        changeFileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            triggerFileSelection();
+        });
+    }
+
+    // Empty-state CTA in the file preview card (if present)
     const emptyBrowseBtn = document.getElementById('emptyBrowseBtn');
     if (emptyBrowseBtn) {
         emptyBrowseBtn.addEventListener('click', (e) => {
