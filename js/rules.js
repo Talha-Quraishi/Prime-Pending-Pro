@@ -31,11 +31,6 @@ function triggerReDeduplication() {
             const newResult = dedupFn(dataSrc, excludedParties, deduplicateParties, specialParties, fullyExcludedParties, partyMonthSelections);
             if (typeof updateProcessingResult === 'function') {
                 updateProcessingResult(newResult);
-            } else {
-                finalDeduplicatedData = newResult;
-                currentFilteredData = newResult;
-                if (typeof applyDashboardFilters === 'function') applyDashboardFilters();
-                if (typeof regenerateWorkbook === 'function') regenerateWorkbook();
             }
         }
     }
@@ -484,7 +479,13 @@ function renderPartyRulesList() {
 
                 if (isSelected) {
                     mChip.className = 'px-1.5 py-0.5 text-[8.5px] font-bold rounded bg-blue-600 text-white shadow-xs hover:bg-blue-700 transition-all flex items-center gap-0.5 cursor-pointer';
-                    mChip.innerHTML = `<span>${labelText}</span><span class="text-[7.5px] font-bold">✓</span>`;
+                    const spanLabel = document.createElement('span');
+                    spanLabel.textContent = labelText;
+                    const spanCheck = document.createElement('span');
+                    spanCheck.className = 'text-[7.5px] font-bold';
+                    spanCheck.textContent = '✓';
+                    mChip.appendChild(spanLabel);
+                    mChip.appendChild(spanCheck);
                     mChip.title = `Currently keeping orders from ${labelText}. Click to remove filter.`;
                 } else if (hasActiveFilter) {
                     mChip.className = 'px-1.5 py-0.5 text-[8.5px] font-medium rounded bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-neutral-700 transition-all cursor-pointer';

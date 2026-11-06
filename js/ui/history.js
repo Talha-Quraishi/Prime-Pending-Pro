@@ -248,11 +248,6 @@ function initializeHistory() {
     }
 }
 
-// Bind history functions to window so inline onclick handlers resolve them
-window.loadHistoricalRecord = loadHistoricalRecord;
-window.downloadHistoricalRaw = downloadHistoricalRaw;
-window.deleteHistoricalRecord = deleteHistoricalRecord;
-
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         saveCurrentUploadToHistory,
