@@ -2,7 +2,7 @@
   "name": "prime-pending-pro",
   "version": "3.30.22",
   "description": "Restructure and analyze pending order Excel files",
-  "author": "Talha",
+  "author": "Talha-Quraishi",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
